@@ -244,7 +244,7 @@ class SSLMetaArch(nn.Module):
             else: 
                 raise NotImplementedError
             student_model_dict["supervised_head"] = supervised_head()
-            teacher_model_dict["supervised_head"] = supervised_head()
+            # teacher_model_dict["supervised_head"] = supervised_head()  # removed supervised head from teacher bc of fsdp error
 
             if cfg.supervised.criterion == "CrossEntropy":
                 self.supervised_criterion = nn.CrossEntropyLoss()
@@ -516,6 +516,8 @@ class SSLMetaArch(nn.Module):
         teacher_param_list = []
         with torch.no_grad():
             for k in self.student.keys():
+                if k == "supervised_head":  # removed supervised head from teacher bc of fsdp error
+                    continue
                 for ms, mt in zip(get_fsdp_modules(self.student[k]), get_fsdp_modules(self.teacher[k])):
                     student_param_list += ms.params
                     teacher_param_list += mt.params
@@ -551,11 +553,15 @@ class SSLMetaArch(nn.Module):
             raise NotImplementedError
         # below will synchronize all student subnetworks across gpus:
         for k, v in self.student.items():
-            self.teacher[k].load_state_dict(self.student[k].state_dict())
-            student_model_cfg = self.cfg.compute_precision.student[k]
-            self.student[k] = get_fsdp_wrapper(student_model_cfg, modules_to_wrap={BlockChunk})(self.student[k])
-            teacher_model_cfg = self.cfg.compute_precision.teacher[k]
-            self.teacher[k] = get_fsdp_wrapper(teacher_model_cfg, modules_to_wrap={BlockChunk})(self.teacher[k])
+            if k == "supervised_head":  # removed supervised head from teacher bc of fsdp error
+                student_model_cfg = self.cfg.compute_precision.student[k]
+                self.student[k] = get_fsdp_wrapper(student_model_cfg, modules_to_wrap={BlockChunk})(self.student[k])
+            else:
+                self.teacher[k].load_state_dict(self.student[k].state_dict())
+                student_model_cfg = self.cfg.compute_precision.student[k]
+                self.student[k] = get_fsdp_wrapper(student_model_cfg, modules_to_wrap={BlockChunk})(self.student[k])
+                teacher_model_cfg = self.cfg.compute_precision.teacher[k]
+                self.teacher[k] = get_fsdp_wrapper(teacher_model_cfg, modules_to_wrap={BlockChunk})(self.teacher[k])
 
     @staticmethod
     def interpolate_pos_encoding(x, w, h):
