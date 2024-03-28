@@ -59,6 +59,34 @@ def smooth_rank_loss(embedding_matrix, eps=1e-7):
     # Return the negative entropy as the loss
     return neg_entropy
 
+class MLP(nn.Module):
+    """
+    (from pytorch metric learning package)
+    layer_sizes[0] is the dimension of the input
+    layer_sizes[-1] is the dimension of the output
+    """
+    def __init__(self, layer_sizes, final_relu=False):
+        super().__init__()
+
+        layer_list = []
+        layer_sizes = [int(x) for x in layer_sizes]
+        num_layers = len(layer_sizes) - 1
+        final_relu_layer = num_layers if final_relu else num_layers - 1
+
+        for i in range(len(layer_sizes) - 1):
+            input_size = layer_sizes[i]
+            curr_size = layer_sizes[i + 1]
+            if i < final_relu_layer:
+                layer_list.append(nn.ReLU(inplace=False))
+            layer_list.append(nn.Linear(input_size, curr_size))
+
+        self.net = nn.Sequential(*layer_list)
+        self.last_linear = self.net[-1]
+
+    def forward(self, x):
+        return self.net(x)
+
+
 def interpolate_pos_encoding(x, w, h):
     N = x.shape[1] - 1
     dim = x.shape[-1]
@@ -139,6 +167,7 @@ class SSLMetaArch(nn.Module):
         self.do_dino = cfg.dino.loss_weight > 0
         self.do_koleo = cfg.dino.koleo_loss_weight > 0
         self.do_ibot = cfg.ibot.loss_weight > 0
+        self.do_supervised_loss = cfg.supervised.loss_weight > 0
 
         self.do_smooth_rank_loss=cfg.dino.smooth_rank_loss_weight>0
         self.ibot_separate_head = cfg.ibot.separate_head
@@ -198,6 +227,11 @@ class SSLMetaArch(nn.Module):
                 teacher_model_dict["ibot_head"] = ibot_head()
             else:
                 logger.info("OPTIONS -- IBOT -- head shared with DINO")
+        
+        if self.do_supervised_loss:
+            student_model_dict["supervised_head"] = MLP([self.embed_dim, cfg.supervised.n_classes])
+            teacher_model_dict["supervised_head"] = MLP([self.embed_dim, cfg.supervised.n_classes])
+            self.supervised_criterion = nn.CrossEntropyLoss()
 
         self.need_to_synchronize_fsdp_streams = True
 
@@ -414,6 +448,12 @@ class SSLMetaArch(nn.Module):
                 loss_dict["smooth_rank_loss"] = (
                     smooth_rank_l / loss_scales
                 )
+
+        if self.do_supervised_loss:
+            cls_output = self.student.supervised_head(student_cls_tokens)
+            supervised_loss = self.supervised_criterion(cls_output, images["labels"].to(cls_output.device))
+            loss_accumulator += supervised_loss
+            loss_dict["supervised_loss"] = supervised_loss / loss_scales
 
         if do_ibot:
             # compute loss
