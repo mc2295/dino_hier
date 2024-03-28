@@ -27,3 +27,4 @@ dinov2/data/blood_sampels/*
 *.png
 dinov2/data/acevedo samples/*
 figures/**
+train_dinobloomv2.sh
