@@ -293,24 +293,6 @@ class HemaPatchDataset(VisionDataset):
 
         self.num_datasets = len(self.patches)
 
-        self.label_dict = {
-            "BAS": 0,
-            "EBO": 1,
-            "EOS": 2,
-            "KSC": 3,
-            "LYA": 4,
-            "LYT": 5,
-            "MMZ": 6,
-            "MOB": 7,
-            "MON": 8,
-            "MYB": 9,
-            "MYO": 10,
-            "NGB": 11,
-            "NGS": 12,
-            "PMB": 13,
-            "PMO": 14,
-        }
-
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
 
         dataset_index = index % self.num_datasets
@@ -361,15 +343,13 @@ class HemaPatchDataset(VisionDataset):
 
         return patch, filepath
 
-
     def get_target(self, dataset_index: int, index_in_dataset: int) -> torch.Tensor:
         # Get the label from the file path
         # TODO only implemented for Matek dataset, extend to all datasets with class annotations
         filepath = self.patches[dataset_index][index_in_dataset]
         label = Path(filepath).parent.name
-        target = self.label_dict[label] if label in self.label_dict.keys() else -1
 
-        return torch.tensor(target)
+        return label
 
     def __len__(self) -> int:
         # assert len(entries) == self.split.length
@@ -416,19 +396,20 @@ class HemaStandardDataset(VisionDataset):
 
         return image, target, filepath
 
-
-
     def get_image_data(self, index: int, dimension=224) -> Image:
         # Load image from jpeg file
-        adjusted_index=index%self.true_len
+        adjusted_index = index % self.true_len
         filepath = self.patches[adjusted_index]
         patch = Image.open(filepath).convert(mode="RGB").resize((dimension,dimension),Image.Resampling.LANCZOS)
         return patch, filepath
 
-
     def get_target(self, index: int) -> torch.Tensor:
-        # labels are not used for training
-        return torch.zeros((1,))
+        # Get the label from the file path                
+        adjusted_index = index % self.true_len
+        filepath = self.patches[adjusted_index]
+        label = Path(filepath).parent.name
+
+        return label
 
     def __len__(self) -> int:
         # assert len(entries) == self.split.length

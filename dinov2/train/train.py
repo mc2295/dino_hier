@@ -48,16 +48,7 @@ def get_args_parser(add_help: bool = True):
     )
     parser.add_argument("--eval-only", action="store_true", help="perform evaluation only")
     parser.add_argument("--eval", type=str, default="", help="Eval type to perform")
-    parser.add_argument(
-        "opts",
-        help="""
-Modify config options at the end of the command. For Yacs configs, use
-space-separated "PATH.KEY VALUE" pairs.
-For python-based LazyConfig, use "path.key=value".
-        """.strip(),
-        default=None,
-        nargs=argparse.REMAINDER,
-    )
+
     parser.add_argument(
         "--output-dir",
         "--output_dir",
@@ -67,7 +58,17 @@ For python-based LazyConfig, use "path.key=value".
     )
     parser.add_argument("--name", type=str, default="debug", help="Name of the run for logging")
     parser.add_argument("--local-rank", type=int, help="Variable for distributed computing.")
-
+    parser.add_argument(
+        "opts",
+        help="""
+            Modify config options at the end of the command. For Yacs configs, use
+            space-separated "PATH.KEY VALUE" pairs.
+            For python-based LazyConfig, use "path.key=value".
+        """.strip(),
+        default=None,
+        nargs=argparse.REMAINDER,
+    )
+    
     return parser
 
 
@@ -216,7 +217,7 @@ def do_train(cfg, model, resume=False):
     dataset = make_dataset(
         dataset_str=cfg.train.dataset_path,
         transform=data_transform,
-        target_transform=lambda x: x,
+        target_transform=lambda x: torch.tensor(cfg.label_dict[x]) if x in cfg.label_dict.keys() else torch.tensor(-1),
     )
     # sampler_type = SamplerType.INFINITE
     # sampler_type = SamplerType.SHARDED_INFINITE

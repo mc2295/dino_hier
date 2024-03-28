@@ -8,6 +8,7 @@ import math
 from functools import partial
 
 import torch
+from pytorch_metric_learning import losses
 from dinov2.fsdp import ShardedGradScaler, get_fsdp_modules, get_fsdp_wrapper, reshard_fsdp_model
 from dinov2.layers import DINOHead
 from dinov2.loss import DINOLoss, KoLeoLoss, iBOTPatchLoss
@@ -229,9 +230,29 @@ class SSLMetaArch(nn.Module):
                 logger.info("OPTIONS -- IBOT -- head shared with DINO")
         
         if self.do_supervised_loss:
-            student_model_dict["supervised_head"] = MLP([self.embed_dim, cfg.supervised.n_classes])
-            teacher_model_dict["supervised_head"] = MLP([self.embed_dim, cfg.supervised.n_classes])
-            self.supervised_criterion = nn.CrossEntropyLoss()
+            if cfg.supervised.head == "MLP":
+                supervised_head = partial(MLP, layer_sizes=[embed_dim, cfg.supervised.n_classes])
+            elif cfg.supervised.head == "DINOHead":
+                supervised_head = partial(
+                    DINOHead,
+                    in_dim=embed_dim,
+                    out_dim=cfg.supervised.n_classes,
+                    hidden_dim=cfg.dino.head_hidden_dim,
+                    bottleneck_dim=cfg.dino.head_bottleneck_dim,
+                    nlayers=cfg.dino.head_nlayers,
+                )
+            else: 
+                raise NotImplementedError
+            student_model_dict["supervised_head"] = supervised_head()
+            teacher_model_dict["supervised_head"] = supervised_head()
+
+            if cfg.supervised.criterion == "CrossEntropy":
+                self.supervised_criterion = nn.CrossEntropyLoss()
+            elif cfg.supervised.criterion == "SupConLoss":
+                self.supervised_criterion = losses.SupConLoss()
+            else:
+                raise NotImplementedError
+            self.supervised_loss_weight = cfg.supervised.loss_weight
 
         self.need_to_synchronize_fsdp_streams = True
 
@@ -450,8 +471,9 @@ class SSLMetaArch(nn.Module):
                 )
 
         if self.do_supervised_loss:
-            cls_output = self.student.supervised_head(student_cls_tokens)
-            supervised_loss = self.supervised_criterion(cls_output, images["labels"].to(cls_output.device))
+            mask = images["labels"] != -1
+            cls_output = self.student.supervised_head(student_cls_tokens[mask])
+            supervised_loss = self.supervised_loss_weight * self.supervised_criterion(cls_output, images["labels"].to(cls_output.device)[mask])
             loss_accumulator += supervised_loss
             loss_dict["supervised_loss"] = supervised_loss / loss_scales
 
