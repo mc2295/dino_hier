@@ -19,6 +19,8 @@ def collate_data_and_cast(samples_list, mask_ratio_tuple, mask_probability, dtyp
         collated_local_crops.to(dtype)
     else:
         collated_local_crops = torch.tensor([])
+    
+    collated_labels = torch.stack([s[1] for i in range(n_global_crops) for s in samples_list])
     # collated_names=[s[2] for s in samples_list]
 
 
@@ -52,4 +54,5 @@ def collate_data_and_cast(samples_list, mask_ratio_tuple, mask_probability, dtyp
         "upperbound": upperbound,
         "n_masked_patches": torch.full((1,), fill_value=mask_indices_list.shape[0], dtype=torch.long),
         # "paths":collated_names
+        "labels": collated_labels,
     }

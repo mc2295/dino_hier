@@ -293,6 +293,24 @@ class HemaPatchDataset(VisionDataset):
 
         self.num_datasets = len(self.patches)
 
+        self.label_dict = {
+            "BAS": 0,
+            "EBO": 1,
+            "EOS": 2,
+            "KSC": 3,
+            "LYA": 4,
+            "LYT": 5,
+            "MMZ": 6,
+            "MOB": 7,
+            "MON": 8,
+            "MYB": 9,
+            "MYO": 10,
+            "NGB": 11,
+            "NGS": 12,
+            "PMB": 13,
+            "PMO": 14,
+        }
+
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
 
         dataset_index = index % self.num_datasets
@@ -304,7 +322,7 @@ class HemaPatchDataset(VisionDataset):
             print(f"can not read image for sample {index, e,self.patches[dataset_index][index_in_dataset]}")
             return self.__getitem__(index + 1)
 
-        target = self.get_target(index)
+        target = self.get_target(dataset_index, index_in_dataset)
 
         if self.transforms is not None:
             image, target = self.transforms(image, target)
@@ -328,7 +346,7 @@ class HemaPatchDataset(VisionDataset):
         patch = patch.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
 
-            # Perform a random crop if needed
+        # Perform a random crop if needed
         if new_w > dimension or new_h > dimension:
             if new_w > dimension:
                 left = random.randint(0, new_w - dimension)
@@ -344,9 +362,14 @@ class HemaPatchDataset(VisionDataset):
         return patch, filepath
 
 
-    def get_target(self, index: int) -> torch.Tensor:
-        # labels are not used for training
-        return torch.zeros((1,))
+    def get_target(self, dataset_index: int, index_in_dataset: int) -> torch.Tensor:
+        # Get the label from the file path
+        # TODO only implemented for Matek dataset, extend to all datasets with class annotations
+        filepath = self.patches[dataset_index][index_in_dataset]
+        label = Path(filepath).parent.name
+        target = self.label_dict[label] if label in self.label_dict.keys() else -1
+
+        return torch.tensor(target)
 
     def __len__(self) -> int:
         # assert len(entries) == self.split.length
