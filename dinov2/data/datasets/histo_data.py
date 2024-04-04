@@ -379,6 +379,7 @@ class HemaStandardDataset(VisionDataset):
             file_list = content.splitlines()
             self.patches.extend(file_list)
         self.true_len=len(self.patches)
+        
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
 
         try:
