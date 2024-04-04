@@ -7,77 +7,17 @@ import itertools
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple
 import random
 
 import numpy as np
-import openslide
 import torch
 from PIL import Image
 from torchvision import transforms
 from torchvision.datasets import VisionDataset
-from tqdm import tqdm
 
 logger = logging.getLogger("dinov2")
 
-
-class WSIDataset(VisionDataset):
-    def __init__(
-        self,
-        *,
-        root: str = "/lustre/groups/shared/tcga/CRC/slides",
-        load: bool = False,
-        transforms: Optional[Callable] = None,
-        transform: Optional[Callable] = None,
-        target_transform: Optional[Callable] = None,
-    ) -> None:
-        super().__init__(root, transforms, transform, target_transform)
-        self.load = load
-
-        if self.load:
-            self.slides = []
-            for slide in tqdm(Path(root).glob("*.svs")):
-                slide = openslide.open_slide(str(slide))
-                self.slides.append(slide)
-        else:
-            self.slides = list(Path(root).glob("*.svs"))
-
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        try:
-            image = self.get_image_data(index)
-        except Exception as e:
-            raise RuntimeError(f"can not read image for sample {index}") from e
-        target = self.get_target(index)
-
-        if self.transforms is not None:
-            image, target = self.transforms(image, target)
-
-        return image, target
-
-    def get_image_data(self, index: int) -> Image:
-        if self.load:
-            slide = self.slides[index]
-        else:
-            slide = openslide.open_slide(str(self.slides[index]))
-
-        dim_x, dim_y = slide.dimensions
-        center = (dim_x // 2, dim_y // 2)
-        patch_size = 224
-
-        # sample patch from image center
-        patch = slide.read_region(
-            (center[0] - patch_size // 2, center[1] - patch_size // 2), 0, (patch_size, patch_size)
-        ).convert(mode="RGB")
-
-        return patch
-
-    def get_target(self, index: int) -> torch.Tensor:
-        # labels are not used for training
-        return torch.zeros((1,))
-
-    def __len__(self) -> int:
-        # assert len(entries) == self.split.length
-        return len(self.slides)
 
 
 class PatchDataset(VisionDataset):
@@ -379,9 +319,9 @@ class HemaStandardDataset(VisionDataset):
             file_list = content.splitlines()
             self.patches.extend(file_list)
         self.true_len=len(self.patches)
-        
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
 
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         try:
             image , filepath = self.get_image_data(index)
         except Exception as e:
@@ -401,6 +341,82 @@ class HemaStandardDataset(VisionDataset):
         # Load image from jpeg file
         adjusted_index = index % self.true_len
         filepath = self.patches[adjusted_index]
+        patch = Image.open(filepath).convert(mode="RGB").resize((dimension,dimension),Image.Resampling.LANCZOS)
+        return patch, filepath
+
+    def get_target(self, index: int) -> torch.Tensor:
+        # Get the label from the file path                
+        adjusted_index = index % self.true_len
+        filepath = self.patches[adjusted_index]
+        label = Path(filepath).parent.name
+
+        return label
+
+    def __len__(self) -> int:
+        # assert len(entries) == self.split.length
+        return 120000000
+    
+
+class HemaAlternatingDataset(VisionDataset):
+    def __init__(
+        self,
+        *,
+        root: str = "",
+        transforms: Optional[Callable] = None,
+        transform: Optional[Callable] = None,
+        target_transform: Optional[Callable] = None,
+        shuffle: bool = False,
+        
+    ) -> None:
+        super().__init__(root, transforms, transform, target_transform)
+
+        patches_unlabeled = self.create_patch_list(Path(root)/"unlabeled")
+        patches_labeled_i = self.create_patch_list(Path(root)/"labeled_i")
+        patches_labeled_ii = self.create_patch_list(Path(root)/"labeled_ii")
+        all_patches=[patches_unlabeled,patches_labeled_i,patches_labeled_ii]
+
+        self.patches=[a for a in all_patches if len(a)>1]
+        self.true_lengths=[len(a) for a in self.patches]
+        self.num_datasets=len(self.patches)
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+
+        dataset_index = index % self.num_datasets #can be changed to make different schedule
+        index_in_dataset = int(index / self.num_datasets) % self.dataset_sizes[dataset_index]
+        filepath = self.patches[dataset_index][index_in_dataset]
+
+        try:
+            image = self.get_image_data(filepath)
+
+        except Exception as e:
+
+            
+            print(f"can not read image for sample {e,filepath}")
+            return self.__getitem__(index + 1)
+
+        target = self.get_target(index)
+
+        if self.transforms is not None:
+            image, target = self.transforms(image, target)
+
+        return image, target, filepath
+    
+    def create_patch_list(self, root:Path):
+
+        files=root.glob("*.txt")
+        patches=[]
+
+        for dataset_file in files:
+            print("Loading ", dataset_file)
+            with open(dataset_file, 'r') as file:
+                content = file.read()
+            file_list = content.splitlines()
+            patches.extend(file_list)
+        return patches
+
+    def get_image_data(self, dataset_index: int,index_in_dataset:int, dimension=224) -> Image:
+        # Load image from jpeg file
+        filepath = self.patches[dataset_index][index_in_dataset]
         patch = Image.open(filepath).convert(mode="RGB").resize((dimension,dimension),Image.Resampling.LANCZOS)
         return patch, filepath
 
