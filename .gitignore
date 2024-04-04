@@ -30,3 +30,5 @@ figures/**
 train_dinobloomv2.sh
 eval_acevedo.sh
 eval_external.sh
+*.jpeg
+*.jpg
