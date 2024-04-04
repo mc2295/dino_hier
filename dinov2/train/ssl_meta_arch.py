@@ -253,6 +253,7 @@ class SSLMetaArch(nn.Module):
             else:
                 raise NotImplementedError
             self.supervised_loss_weight = cfg.supervised.loss_weight
+            self.supervised_loss_wait_iter = cfg.supervised.wait_iter
 
         self.need_to_synchronize_fsdp_streams = True
 
@@ -273,7 +274,7 @@ class SSLMetaArch(nn.Module):
         else:
             loss.backward()
 
-    def forward_backward(self, images, teacher_temp):
+    def forward_backward(self, images, teacher_temp, iteration):
         n_global_crops = 2
         assert n_global_crops == 2
         n_local_crops = self.cfg.crops.local_crops_number
@@ -470,9 +471,10 @@ class SSLMetaArch(nn.Module):
                     smooth_rank_l / loss_scales
                 )
 
-        if self.do_supervised_loss:
+        if self.do_supervised_loss and iteration > self.supervised_loss_wait_iter and images["labels"].max() > -1:
             mask = images["labels"] != -1
             cls_output = self.student.supervised_head(student_cls_tokens[mask])
+            print(cls_output.shape)
             supervised_loss = self.supervised_loss_weight * self.supervised_criterion(cls_output, images["labels"].to(cls_output.device)[mask])
             loss_accumulator += supervised_loss
             loss_dict["supervised_loss"] = supervised_loss / loss_scales
