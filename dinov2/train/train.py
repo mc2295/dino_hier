@@ -269,7 +269,7 @@ def do_train(cfg, model, resume=False):
         # compute losses
 
         optimizer.zero_grad(set_to_none=True)
-        loss_dict, class_tokens = model.forward_backward(data, teacher_temp=teacher_temp)
+        loss_dict, class_tokens = model.forward_backward(data, teacher_temp=teacher_temp, iteration=iteration)
 
         if fp16_scaler is not None:
             if cfg.optim.clip_grad:
