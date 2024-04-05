@@ -5,5 +5,4 @@
 
 from .image_net import ImageNet
 from .image_net_22k import ImageNet22k
-from .hema_data import WSIDataset
-from .hema_data import PatchDataset, BalancedPatchDataset, HemaPatchDataset,HemaStandardDataset
+from .hema_data import PatchDataset, BalancedPatchDataset, HemaPatchDataset,HemaStandardDataset,HemaAlternatingDataset
