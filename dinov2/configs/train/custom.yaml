@@ -93,6 +93,9 @@ supervised:
   criterion: CrossEntropy  # CrossEntropy or SupConLoss
   head: MLP  # MLP or DINOHead
   wait_iter: -1  # 0
+  dicts: [
+    {head: "MLP", n_classes: 11, losses: ["SupConLoss", "CrossEntropy"]}
+  ]
 
 # adapt to model architecture
 # ---------------------------

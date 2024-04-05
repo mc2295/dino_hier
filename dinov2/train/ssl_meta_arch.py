@@ -230,33 +230,42 @@ class SSLMetaArch(nn.Module):
                 logger.info("OPTIONS -- IBOT -- head shared with DINO")
         
         if self.do_supervised_loss:
-            if cfg.supervised.head == "MLP":
-                supervised_head = partial(MLP, layer_sizes=[embed_dim, cfg.supervised.n_classes])
-            elif cfg.supervised.head == "DINOHead":
-                supervised_head = partial(
-                    DINOHead,
-                    in_dim=embed_dim,
-                    out_dim=cfg.supervised.n_classes,
-                    hidden_dim=cfg.dino.head_hidden_dim,
-                    bottleneck_dim=cfg.dino.head_bottleneck_dim,
-                    nlayers=cfg.dino.head_nlayers,
-                )
-            else: 
-                raise NotImplementedError
-            student_model_dict["supervised_head"] = supervised_head()
+
+            self.supervised_losses=[]
+
+            for i,supervised_conf_dict in enumerate(cfg.supervised.dicts):
+
+                if supervised_conf_dict.head == "MLP":
+                    supervised_head =partial(MLP, layer_sizes=[embed_dim, supervised_conf_dict.n_classes])
+                elif supervised_conf_dict.head == "DINOHead":
+                    supervised_head =partial(
+                        DINOHead,
+                        in_dim=embed_dim,
+                        out_dim=supervised_conf_dict,
+                        hidden_dim=cfg.dino.head_hidden_dim,
+                        bottleneck_dim=cfg.dino.head_bottleneck_dim,
+                        nlayers=cfg.dino.head_nlayers,
+                    )
+                else: 
+                    raise NotImplementedError
+                student_model_dict["supervised_head_"+str(i)]=supervised_head()
+                loss_fcs=[]
+                for j,loss_fc in enumerate(supervised_conf_dict.losses):
+                    if loss_fc == "CrossEntropy":
+                        loss_fcs.append(nn.CrossEntropyLoss())
+                    elif loss_fc== "SupConLoss":
+                        loss_fcs.append(losses.SupConLoss())
+                    else:
+                        raise NotImplementedError
+                self.supervised_losses.append(loss_fcs)
+
             # teacher_model_dict["supervised_head"] = supervised_head()  # removed supervised head from teacher bc of fsdp error
 
-            if cfg.supervised.criterion == "CrossEntropy":
-                self.supervised_criterion = nn.CrossEntropyLoss()
-            elif cfg.supervised.criterion == "SupConLoss":
-                self.supervised_criterion = losses.SupConLoss()
-            else:
-                raise NotImplementedError
+
             self.supervised_loss_weight = cfg.supervised.loss_weight
             self.supervised_loss_wait_iter = cfg.supervised.wait_iter
 
         self.need_to_synchronize_fsdp_streams = True
-
         self.student = nn.ModuleDict(student_model_dict)
         self.teacher = nn.ModuleDict(teacher_model_dict)
 
@@ -473,11 +482,13 @@ class SSLMetaArch(nn.Module):
 
         if self.do_supervised_loss and iteration > self.supervised_loss_wait_iter and images["labels"].max() > -1:
             mask = images["labels"] != -1
-            cls_output = self.student.supervised_head(student_cls_tokens[mask])
-            print(cls_output.shape)
-            supervised_loss = self.supervised_loss_weight * self.supervised_criterion(cls_output, images["labels"].to(cls_output.device)[mask])
-            loss_accumulator += supervised_loss
-            loss_dict["supervised_loss"] = supervised_loss / loss_scales
+            for i, losses in enumerate(self.supervised_losses):
+                cls_output = self.student["supervised_head_"+str(i)](student_cls_tokens[mask])
+                supervised_loss=0
+                for loss in losses:
+                    supervised_loss += self.supervised_loss_weight * loss(cls_output, images["labels"].to(cls_output.device)[mask])
+                loss_accumulator += supervised_loss
+                loss_dict["supervised_loss-"+str(i)] = supervised_loss / loss_scales
 
         if do_ibot:
             # compute loss
@@ -518,7 +529,7 @@ class SSLMetaArch(nn.Module):
         teacher_param_list = []
         with torch.no_grad():
             for k in self.student.keys():
-                if k == "supervised_head":  # removed supervised head from teacher bc of fsdp error
+                if "supervised_head" in k:  # removed supervised head from teacher bc of fsdp error
                     continue
                 for ms, mt in zip(get_fsdp_modules(self.student[k]), get_fsdp_modules(self.teacher[k])):
                     student_param_list += ms.params
@@ -555,8 +566,8 @@ class SSLMetaArch(nn.Module):
             raise NotImplementedError
         # below will synchronize all student subnetworks across gpus:
         for k, v in self.student.items():
-            if k == "supervised_head":  # removed supervised head from teacher bc of fsdp error
-                student_model_cfg = self.cfg.compute_precision.student[k]
+            if "supervised_head" in k:  # removed supervised head from teacher bc of fsdp error
+                student_model_cfg = self.cfg.compute_precision.student["supervised_head" ]
                 self.student[k] = get_fsdp_wrapper(student_model_cfg, modules_to_wrap={BlockChunk})(self.student[k])
             else:
                 self.teacher[k].load_state_dict(self.student[k].state_dict())
