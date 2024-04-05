@@ -373,10 +373,11 @@ class HemaAlternatingDataset(VisionDataset):
         patches_unlabeled = self.create_patch_list(Path(root)/"unlabeled")
         patches_labeled_i = self.create_patch_list(Path(root)/"labeled_i")
         patches_labeled_ii = self.create_patch_list(Path(root)/"labeled_ii")
+
         all_patches=[patches_unlabeled,patches_labeled_i,patches_labeled_ii]
 
         self.patches=[a for a in all_patches if len(a)>1]
-        self.true_lengths=[len(a) for a in self.patches]
+        self.dataset_sizes=[len(a) for a in self.patches]
         self.num_datasets=len(self.patches)
 
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -389,12 +390,10 @@ class HemaAlternatingDataset(VisionDataset):
             image = self.get_image_data(filepath)
 
         except Exception as e:
-
-            
             print(f"can not read image for sample {e,filepath}")
             return self.__getitem__(index + 1)
 
-        target = self.get_target(index)
+        target = self.get_target(filepath)
 
         if self.transforms is not None:
             image, target = self.transforms(image, target)
@@ -414,18 +413,14 @@ class HemaAlternatingDataset(VisionDataset):
             patches.extend(file_list)
         return patches
 
-    def get_image_data(self, dataset_index: int,index_in_dataset:int, dimension=224) -> Image:
+    def get_image_data(self, filepath, dimension=224) -> Image:
         # Load image from jpeg file
-        filepath = self.patches[dataset_index][index_in_dataset]
         patch = Image.open(filepath).convert(mode="RGB").resize((dimension,dimension),Image.Resampling.LANCZOS)
-        return patch, filepath
+        return patch
 
-    def get_target(self, index: int) -> torch.Tensor:
+    def get_target(self, filepath) -> torch.Tensor:
         # Get the label from the file path                
-        adjusted_index = index % self.true_len
-        filepath = self.patches[adjusted_index]
         label = Path(filepath).parent.name
-
         return label
 
     def __len__(self) -> int:
