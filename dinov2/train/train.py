@@ -139,7 +139,7 @@ def do_test(cfg, model, iteration):
     if distributed.is_main_process():
         iterstring = str(iteration)
         eval_dir = os.path.join(cfg.train.output_dir, "eval", iterstring)
-        os.makedirs(eval_dir, exist_ok=True)
+        os.makedirs(eval_dir, exist_ok=True, mode=0o777)
         # save teacher checkpoint
         teacher_ckp_path = os.path.join(eval_dir, "teacher_checkpoint.pth")
         torch.save({"teacher": new_state_dict}, teacher_ckp_path)

@@ -226,7 +226,7 @@ def create_umap(data, labels, save_dir, filename_addon="train"):
     # Specify the directory for saving the images
 
     umap_dir = os.path.join(save_dir, "umaps")
-    os.makedirs(umap_dir, exist_ok=True)
+    os.makedirs(umap_dir, exist_ok=True, mode=0o777)
 
     # Loop through different figure sizes
     figure_sizes = [(48, 32), (36, 24), (24, 16), (12, 8), (6, 4)]  # Add more sizes as needed
@@ -276,7 +276,7 @@ def train_and_evaluate_logistic_regression(
 
     df_labels_to_save = pd.DataFrame({"True Labels": test_labels, "Predicted Labels": test_predictions})
     filename = f"{Path(save_dir).name}_labels_and_predictions.csv"
-    os.makedirs(save_dir, exist_ok=True)
+    os.makedirs(save_dir, exist_ok=True, mode=0o777)
     file_path = os.path.join(save_dir, filename)
     # Speichern des DataFrames in der CSV-Datei
     df_labels_to_save.to_csv(file_path, index=False)

@@ -55,10 +55,10 @@ def eval_slide_level(cfg):
         f'{cfg.name}_{cfg.model}_{"-".join(cfg.cohorts)}_{cfg.norm}_{cfg.target}' if cfg.name != "debug" else "debug"
     )
     base_path = base_path / cfg.logging_name
-    base_path.mkdir(parents=True, exist_ok=True)
+    base_path.mkdir(parents=True, exist_ok=True, mode=0o777)
     model_path = base_path / "models"
     result_path = base_path / "results"
-    result_path.mkdir(parents=True, exist_ok=True)
+    result_path.mkdir(parents=True, exist_ok=True, mode=0o777)
 
     # check if results csv exists already
     if Path(base_path / f"results_test_{cfg.logging_name}.csv").exists() and cfg.name != "debug":
@@ -131,7 +131,7 @@ def eval_slide_level(cfg):
 
     # load fold directory from data_config
     fold_path = Path(args.data_config[train_cohorts]["folds"]) / f"{cfg.target}_{cfg.folds}folds"
-    fold_path.mkdir(parents=True, exist_ok=True)
+    fold_path.mkdir(parents=True, exist_ok=True, mode=0o777)
 
     # split data stratified by the labels
     skf = StratifiedKFold(n_splits=cfg.folds, shuffle=True, random_state=cfg.seed)
