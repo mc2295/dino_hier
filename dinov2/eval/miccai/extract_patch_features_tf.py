@@ -103,7 +103,7 @@ class WBCMILDataset(tf.keras.utils.Sequence):
 
 def save_features_and_labels_individual(feature_extractor, dataloader, save_dir):
 
-    os.makedirs(save_dir, exist_ok=True)
+    os.makedirs(save_dir, exist_ok=True, mode=0o777)
     device = "GPU" if tf.config.list_physical_devices('GPU') else "CPU"
 
     for images, image_paths in tqdm.tqdm(dataloader):
@@ -115,7 +115,7 @@ def save_features_and_labels_individual(feature_extractor, dataloader, save_dir)
             h5_filename = f"{os.path.splitext(img_name)[0]}.h5"
             h5_filename = Path(save_dir) / Path(h5_filename).name
 
-            os.makedirs(os.path.dirname(h5_filename), exist_ok=True)
+            os.makedirs(os.path.dirname(h5_filename), exist_ok=True, mode=0o777)
 
             with h5py.File(h5_filename, "w") as hf:
                 hf.create_dataset("features", data=img_features.numpy())

@@ -118,7 +118,7 @@ parser.add_argument(
 def save_features_and_labels(feature_extractor, dataloader, save_dir,dataset_len):
 
     print("extracting features..")
-    os.makedirs(save_dir, exist_ok=True)
+    os.makedirs(save_dir, exist_ok=True, mode=0o777)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -311,7 +311,7 @@ def perform_knn(train_data, train_labels, test_data, test_labels, save_dir):
     # n_neighbors_values = [1, 2, 5, 10, 20, 50, 100, 500]
     # n_neighbors_values = [1, 2, 3, 4, 5] # -> for testing
     metrics_dict = {}
-    os.makedirs(save_dir, exist_ok=True)
+    os.makedirs(save_dir, exist_ok=True, mode=0o777)
 
     for n_neighbors in n_neighbors_values:
         # Initialize a KNeighborsClassifier with the current n_neighbors
@@ -460,7 +460,7 @@ def train_and_evaluate_logistic_regression(train_data, train_labels, test_data, 
 
     df_labels_to_save = pd.DataFrame({"True Labels": test_labels, "Predicted Labels": test_predictions})
     filename = f"{Path(save_dir).name}_labels_and_predictions.csv"
-    os.makedirs(save_dir, exist_ok=True)
+    os.makedirs(save_dir, exist_ok=True, mode=0o777)
     file_path = os.path.join(save_dir, filename)
     # Speichern des DataFrames in der CSV-Datei
     df_labels_to_save.to_csv(file_path, index=False)

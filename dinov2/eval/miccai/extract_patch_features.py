@@ -144,7 +144,7 @@ def save_features_and_labels_individual(feature_extractor, dataloader, save_dir,
     if args.model_name.split('_')[0]=="dinov2" and args.checkpoint is not None:
         folder_name += "_bloom"
 
-    os.makedirs(save_dir, exist_ok=True)
+    os.makedirs(save_dir, exist_ok=True, mode=0o777)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     with torch.no_grad():
@@ -159,7 +159,7 @@ def save_features_and_labels_individual(feature_extractor, dataloader, save_dir,
                 img_name = img_name.replace('/splitted_data/', f'/splitted_extracted_features/{folder_name}/')
                 h5_filename = f"{img_name.split('.')[0]}.h5"
 
-                os.makedirs(os.path.dirname(h5_filename), exist_ok=True)
+                os.makedirs(os.path.dirname(h5_filename), exist_ok=True, mode=0o777)
 
                 with h5py.File(h5_filename, "w") as hf:
                     hf.create_dataset("features", data=img_features.cpu().numpy())

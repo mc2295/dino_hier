@@ -9,16 +9,16 @@ import numpy as np
 import pandas as pd
 import torch
 import umap
+import wandb
 from models.return_model import get_models, get_transforms
 from PIL import Image
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, classification_report, f1_score, log_loss
+from sklearn.metrics import (accuracy_score, balanced_accuracy_score,
+                             classification_report, f1_score, log_loss)
 from sklearn.neighbors import KNeighborsClassifier
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from utils import CustomImageDataset
-
-import wandb
 
 parser = argparse.ArgumentParser(description="Feature extraction")
 os.environ["WANDB__SERVICE_WAIT"] = "300"
@@ -118,7 +118,7 @@ def save_features_and_labels_individual(feature_extractor, dataloader, save_dir,
         return
     
     print("extracting features..")
-    os.makedirs(save_dir, exist_ok=True)
+    os.makedirs(save_dir, exist_ok=True, mode=0o777)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

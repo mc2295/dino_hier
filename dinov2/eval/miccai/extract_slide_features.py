@@ -68,7 +68,7 @@ def main(args):
             / "features"
             / f"{args.dataset}_{Path(c).parent.name}_{args.patch_size}px_{args.model[i]}_{args.resolution_in_mpp}mpp"
         )
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True, mode=0o777)
         model_dicts.append(
             {
                 "model": get_models(args.model[i], c),
@@ -194,7 +194,7 @@ def extract_features(
 
     if args.save_patch_images:
         (Path(args.save_path) / "patches" / str(args.downscaling_factor) / slide_name).mkdir(
-            parents=True, exist_ok=True
+            parents=True, exist_ok=True, mode=0o777
         )
 
     orig_sizes = []
