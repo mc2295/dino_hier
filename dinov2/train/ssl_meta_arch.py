@@ -169,6 +169,7 @@ class SSLMetaArch(nn.Module):
         self.do_koleo = cfg.dino.koleo_loss_weight > 0
         self.do_ibot = cfg.ibot.loss_weight > 0
         self.do_supervised_loss = cfg.supervised.loss_weight > 0
+        self.do_domain_loss = cfg.domain.loss_weight > 0
 
         self.do_smooth_rank_loss=cfg.dino.smooth_rank_loss_weight>0
         self.ibot_separate_head = cfg.ibot.separate_head
@@ -236,9 +237,9 @@ class SSLMetaArch(nn.Module):
             for i,supervised_conf_dict in enumerate(cfg.supervised.dicts):
 
                 if supervised_conf_dict.head == "MLP":
-                    supervised_head =partial(MLP, layer_sizes=[embed_dim, supervised_conf_dict.n_classes])
+                    supervised_head = partial(MLP, layer_sizes=[embed_dim, supervised_conf_dict.n_classes])
                 elif supervised_conf_dict.head == "DINOHead":
-                    supervised_head =partial(
+                    supervised_head = partial(
                         DINOHead,
                         in_dim=embed_dim,
                         out_dim=supervised_conf_dict,
@@ -248,22 +249,44 @@ class SSLMetaArch(nn.Module):
                     )
                 else: 
                     raise NotImplementedError
-                student_model_dict["supervised_head_"+str(i)]=supervised_head()
-                loss_fcs=[]
-                for j,loss_fc in enumerate(supervised_conf_dict.losses):
-                    if loss_fc == "CrossEntropy":
-                        loss_fcs.append(nn.CrossEntropyLoss())
-                    elif loss_fc== "SupConLoss":
-                        loss_fcs.append(losses.SupConLoss())
-                    else:
-                        raise NotImplementedError
-                self.supervised_losses.append(loss_fcs)
-
-            # teacher_model_dict["supervised_head"] = supervised_head()  # removed supervised head from teacher bc of fsdp error
-
+                student_model_dict["supervised_head_"+str(i)] =supervised_head()
+                
+                if cfg.domain.criterion == "CrossEntropy":
+                    self.domain_loss = nn.CrossEntropyLoss()
+                elif cfg.domain.criterion == "SupConLoss":
+                    self.domain_loss = losses.SupConLoss()
+                else:
+                    raise NotImplementedError
 
             self.supervised_loss_weight = cfg.supervised.loss_weight
             self.supervised_loss_wait_iter = cfg.supervised.wait_iter
+
+        if self.do_domain_loss:
+            if cfg.domain.head == "MLP":
+                supervised_head = partial(MLP, layer_sizes=[embed_dim, cfg.domain.n_classes])
+            elif supervised_conf_dict.head == "DINOHead":
+                supervised_head =partial(
+                    DINOHead,
+                    in_dim=embed_dim,
+                    out_dim=cfg.domain.n_classes,
+                    hidden_dim=cfg.dino.head_hidden_dim,
+                    bottleneck_dim=cfg.dino.head_bottleneck_dim,
+                    nlayers=cfg.dino.head_nlayers,
+                )
+            else: 
+                raise NotImplementedError
+
+            student_model_dict["domain_head"] = supervised_head()
+            loss_fcs=[]
+            for j,loss_fc in enumerate(supervised_conf_dict.losses):
+                if loss_fc == "CrossEntropy":
+                    loss_fcs.append(nn.CrossEntropyLoss())
+                elif loss_fc== "SupConLoss":
+                    loss_fcs.append(losses.SupConLoss())
+                else:
+                    raise NotImplementedError
+            
+            self.domain_loss_weight = cfg.domain.loss_weight
 
         self.need_to_synchronize_fsdp_streams = True
         self.student = nn.ModuleDict(student_model_dict)
@@ -484,11 +507,18 @@ class SSLMetaArch(nn.Module):
             mask = images["labels"] != -1
             for i, losses in enumerate(self.supervised_losses):
                 cls_output = self.student["supervised_head_"+str(i)](student_cls_tokens[mask])
-                supervised_loss=0
+                supervised_loss = 0
                 for loss in losses:
                     supervised_loss += self.supervised_loss_weight * loss(cls_output, images["labels"].to(cls_output.device)[mask])
                 loss_accumulator += supervised_loss
                 loss_dict["supervised_loss-"+str(i)] = supervised_loss / loss_scales
+        
+        if self.do_domain_loss:
+            mask = images["domain_labels"] != -1  # should not be necessary as all samples have a domain
+            cls_output = self.student["domain_head"](student_cls_tokens[mask])
+            domain_loss = self.domain_loss(cls_output, images["domain_labels"].to(cls_output.device)[mask])
+            loss_accumulator -= self.domain_loss_weight * domain_loss
+            loss_dict["domain_loss"] = domain_loss / loss_scales
 
         if do_ibot:
             # compute loss
@@ -529,7 +559,7 @@ class SSLMetaArch(nn.Module):
         teacher_param_list = []
         with torch.no_grad():
             for k in self.student.keys():
-                if "supervised_head" in k:  # removed supervised head from teacher bc of fsdp error
+                if "supervised_head" in k or "domain_head" in k:  # removed supervised head from teacher bc of fsdp error
                     continue
                 for ms, mt in zip(get_fsdp_modules(self.student[k]), get_fsdp_modules(self.teacher[k])):
                     student_param_list += ms.params
@@ -568,6 +598,9 @@ class SSLMetaArch(nn.Module):
         for k, v in self.student.items():
             if "supervised_head" in k:  # removed supervised head from teacher bc of fsdp error
                 student_model_cfg = self.cfg.compute_precision.student["supervised_head" ]
+                self.student[k] = get_fsdp_wrapper(student_model_cfg, modules_to_wrap={BlockChunk})(self.student[k])
+            elif "domain_head" in k:  # removed supervised head from teacher bc of fsdp error
+                student_model_cfg = self.cfg.compute_precision.student["domain_head" ]
                 self.student[k] = get_fsdp_wrapper(student_model_cfg, modules_to_wrap={BlockChunk})(self.student[k])
             else:
                 self.teacher[k].load_state_dict(self.student[k].state_dict())

@@ -246,10 +246,12 @@ class HemaPatchDataset(VisionDataset):
 
         target = self.get_target(dataset_index, index_in_dataset)
 
+        domain_label = self.get_domain_label(dataset_index, index_in_dataset)
+
         if self.transforms is not None:
             image, target = self.transforms(image, target)
 
-        return image, target, filepath
+        return image, target, filepath, domain_label
 
 
     def get_image_data(self, dataset_index: int, index_in_dataset: int, dimension=280) -> Image:
@@ -266,7 +268,6 @@ class HemaPatchDataset(VisionDataset):
             new_w = dimension
             new_h = int(new_w * h / w)
         patch = patch.resize((new_w, new_h), Image.Resampling.LANCZOS)
-
 
         # Perform a random crop if needed
         if new_w > dimension or new_h > dimension:
@@ -285,11 +286,19 @@ class HemaPatchDataset(VisionDataset):
 
     def get_target(self, dataset_index: int, index_in_dataset: int) -> torch.Tensor:
         # Get the label from the file path
-        # TODO only implemented for Matek dataset, extend to all datasets with class annotations
         filepath = self.patches[dataset_index][index_in_dataset]
         label = Path(filepath).parent.name
 
         return label
+    
+    def get_domain_label(self, dataset_index: int, index_in_dataset: int) -> torch.Tensor:
+        # Get the label from the file path
+        filepath = self.patches[dataset_index][index_in_dataset]
+        domain = Path(filepath).parts[5]
+        if domain == "qscd01":
+            domain = Path(ffilepath).parts[9] if Path(filepath).parts[8] == "_Domains" else Path(filepath).parts[7]
+
+        return domain
 
     def __len__(self) -> int:
         # assert len(entries) == self.split.length
@@ -305,10 +314,12 @@ class HemaStandardDataset(VisionDataset):
         transforms: Optional[Callable] = None,
         transform: Optional[Callable] = None,
         target_transform: Optional[Callable] = None,
+        domain_target_transform: Optional[Callable] = None,
         shuffle: bool = False,
     ) -> None:
         super().__init__(root, transforms, transform, target_transform)
         self.patches = []
+        self.domain_target_transform = domain_target_transform
 
         all_dataset_files = Path(root).glob("*.txt")
 
@@ -319,7 +330,6 @@ class HemaStandardDataset(VisionDataset):
             file_list = content.splitlines()
             self.patches.extend(file_list)
         self.true_len=len(self.patches)
-
 
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         try:
@@ -332,10 +342,12 @@ class HemaStandardDataset(VisionDataset):
 
         target = self.get_target(index)
 
+        domain_label = self.get_domain_label(index)
+
         if self.transforms is not None:
             image, target = self.transforms(image, target)
 
-        return image, target, filepath
+        return image, target, filepath, domain_label
 
     def get_image_data(self, index: int, dimension=224) -> Image:
         # Load image from jpeg file
@@ -351,6 +363,16 @@ class HemaStandardDataset(VisionDataset):
         label = Path(filepath).parent.name
 
         return label
+    
+    def get_domain_label(self, index: int) -> torch.Tensor:
+        # Get the label from the file path
+        adjusted_index = index % self.true_len
+        filepath = self.patches[adjusted_index]
+        domain = Path(filepath).parts[5]
+        if domain == "qscd01":
+            domain = Path(filepath).parts[9] if Path(filepath).parts[8] == "_Domains" else Path(filepath).parts[7]
+
+        return self.domain_target_transform(domain)
 
     def __len__(self) -> int:
         # assert len(entries) == self.split.length

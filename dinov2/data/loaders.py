@@ -81,6 +81,7 @@ def make_dataset(
     dataset_str: str,
     transform: Optional[Callable] = None,
     target_transform: Optional[Callable] = None,
+    domain_target_transform: Optional[Callable] = None,
 ):
     """
     Creates a dataset with the specified parameters.
@@ -96,7 +97,7 @@ def make_dataset(
     logger.info(f'using dataset: "{dataset_str}"')
 
     class_, kwargs = _parse_dataset_str(dataset_str)
-    dataset = class_(transform=transform, target_transform=target_transform, **kwargs)
+    dataset = class_(transform=transform, target_transform=target_transform, domain_target_transform=domain_target_transform, **kwargs)
 
     logger.info(f"# of dataset samples: {len(dataset):,d}")
 
