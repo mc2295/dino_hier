@@ -13,6 +13,7 @@ from dinov2.fsdp import ShardedGradScaler, get_fsdp_modules, get_fsdp_wrapper, r
 from dinov2.layers import DINOHead
 from dinov2.loss import DINOLoss, KoLeoLoss, iBOTPatchLoss
 from dinov2.models import build_model_from_cfg
+from pytorch_revgrad import RevGrad
 
 try:
     from dinov2.models.vision_mamba import get_vision_mamba_model
@@ -66,14 +67,15 @@ class MLP(nn.Module):
     layer_sizes[0] is the dimension of the input
     layer_sizes[-1] is the dimension of the output
     """
-    def __init__(self, layer_sizes, final_relu=False):
+    def __init__(self, layer_sizes, final_relu=False, grad_rev=False):
         super().__init__()
 
         layer_list = []
         layer_sizes = [int(x) for x in layer_sizes]
         num_layers = len(layer_sizes) - 1
         final_relu_layer = num_layers if final_relu else num_layers - 1
-
+        if grad_rev:
+            layer_list.append(RevGrad())
         for i in range(len(layer_sizes) - 1):
             input_size = layer_sizes[i]
             curr_size = layer_sizes[i + 1]
@@ -263,7 +265,7 @@ class SSLMetaArch(nn.Module):
 
         if self.do_domain_loss:
             if cfg.domain.head == "MLP":
-                supervised_head = partial(MLP, layer_sizes=[embed_dim, cfg.domain.n_classes])
+                supervised_head = partial(MLP, layer_sizes=[embed_dim, cfg.domain.n_classes],grad_rev=True)
             elif supervised_conf_dict.head == "DINOHead":
                 supervised_head =partial(
                     DINOHead,
