@@ -371,7 +371,8 @@ class HemaStandardDataset(VisionDataset):
         domain = Path(filepath).parts[5]
         if domain == "qscd01":
             domain = Path(filepath).parts[9] if Path(filepath).parts[8] == "_Domains" else Path(filepath).parts[7]
-
+        elif domain == "patches":
+            domain = Path(filepath).parts[6]
         return self.domain_target_transform(domain)
 
     def __len__(self) -> int:
