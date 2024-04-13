@@ -296,7 +296,7 @@ class HemaPatchDataset(VisionDataset):
         filepath = self.patches[dataset_index][index_in_dataset]
         domain = Path(filepath).parts[5]
         if domain == "qscd01":
-            domain = Path(ffilepath).parts[9] if Path(filepath).parts[8] == "_Domains" else Path(filepath).parts[7]
+            domain = Path(filepath).parts[9] if Path(filepath).parts[8] == "_Domains" else Path(filepath).parts[7]
 
         return domain
 
@@ -418,11 +418,19 @@ class HemaAlternatingDataset(VisionDataset):
             return self.__getitem__(index + 1)
 
         target = self.get_target(filepath)
-
+        domain_label = self.get_domain_label(filepath)
         if self.transforms is not None:
             image, target = self.transforms(image, target)
 
-        return image, target, filepath
+        return image, target, filepath, domain_label
+    
+    def get_domain_label(self, filepath:str) -> torch.Tensor:
+        # Get the label from the file path
+        domain = Path(filepath).parts[5]
+        if domain == "qscd01":
+            domain = Path(filepath).parts[9] if Path(filepath).parts[8] == "_Domains" else Path(filepath).parts[7]
+
+        return domain
     
     def create_patch_list(self, root:Path):
 

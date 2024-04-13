@@ -15,6 +15,12 @@ compute_precision:
         param_dtype: fp16
         reduce_dtype: fp16
         buffer_dtype: fp32
+    domain_head:
+      sharding_strategy: SHARD_GRAD_OP
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp16
+        buffer_dtype: fp32
 
 ibot:
   separate_head: true
@@ -24,7 +30,7 @@ train:
   batch_size_per_gpu: 64 #vitg 26+, vitl: 56, vits:152, vitb:120 for 8 node
   num_workers: 15
   OFFICIAL_EPOCH_LENGTH: 500  # 1250
-  dataset_path: HemaAlternatingDataset:root=/lustre/groups/shared/users/peng_marr/DinoBloomv2/hematology_patches_separated:shuffle=1
+  dataset_path: HemaStandardDataset:root=/mnt/ceph_vol/dinov2/train_files:shuffle=1
   centering: sinkhorn_knopp
 
   drop_path_rate: 0.4
@@ -43,7 +49,14 @@ optim:
 
 evaluation:
   eval_period_iterations: 1000
-
+domain:
+  loss_weight: 0.1
+  criterion: CrossEntropy
+  head: MLP
+  n_classes: 2
+  label_dict:
+    20-014_K11_Movat: 0
+    20-014_K11_EvG: 1
 label_dict: 
   # --- harmonized labels ---
   basophil: 0
