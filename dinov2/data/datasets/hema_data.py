@@ -298,7 +298,7 @@ class HemaPatchDataset(VisionDataset):
         if domain == "qscd01":
             domain = Path(filepath).parts[9] if Path(filepath).parts[8] == "_Domains" else Path(filepath).parts[7]
 
-        return domain
+        return self.domain_target_transform(domain)
 
     def __len__(self) -> int:
         # assert len(entries) == self.split.length
@@ -430,7 +430,7 @@ class HemaAlternatingDataset(VisionDataset):
         if domain == "qscd01":
             domain = Path(filepath).parts[9] if Path(filepath).parts[8] == "_Domains" else Path(filepath).parts[7]
 
-        return domain
+        return self.domain_target_transform(domain)
     
     def create_patch_list(self, root:Path):
 
