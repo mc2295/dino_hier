@@ -388,6 +388,7 @@ class HemaAlternatingDataset(VisionDataset):
         transforms: Optional[Callable] = None,
         transform: Optional[Callable] = None,
         target_transform: Optional[Callable] = None,
+        domain_target_transform=None,
         shuffle: bool = False,
         
     ) -> None:
