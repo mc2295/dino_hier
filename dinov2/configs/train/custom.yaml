@@ -30,7 +30,7 @@ train:
   batch_size_per_gpu: 64 #vitg 26+, vitl: 56, vits:152, vitb:120 for 8 node
   num_workers: 15
   OFFICIAL_EPOCH_LENGTH: 500  # 1250
-  dataset_path: HemaStandardDataset:root=/mnt/ceph_vol/dinov2/train_files:shuffle=1
+  dataset_path: HemaAlternatingDataset:root=/mnt/ceph_vol/dinov2/train_files:shuffle=1
   centering: sinkhorn_knopp
 
   drop_path_rate: 0.4
