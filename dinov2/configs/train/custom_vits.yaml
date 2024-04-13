@@ -65,7 +65,8 @@ optim:
   warmup_epochs: 10  # 80
   layerwise_decay: 1.0
 
-
+domain:
+  loss_weight: 0.1
 evaluation:
   eval_period_iterations: 5000
 
