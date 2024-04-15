@@ -251,14 +251,20 @@ class SSLMetaArch(nn.Module):
                     )
                 else: 
                     raise NotImplementedError
+                loss_fcs=[]
+
+                for loss in supervised_conf_dict.losses:
+
+                    if loss == "CrossEntropy":
+                        loss_fcs.append(nn.CrossEntropyLoss())
+                    elif loss == "SupConLoss":
+                       loss_fcs.append(losses.SupConLoss())
+                    else:
+                        raise NotImplementedError
+
                 student_model_dict["supervised_head_"+str(i)] =supervised_head()
                 
-                if cfg.domain.criterion == "CrossEntropy":
-                    self.domain_loss = nn.CrossEntropyLoss()
-                elif cfg.domain.criterion == "SupConLoss":
-                    self.domain_loss = losses.SupConLoss()
-                else:
-                    raise NotImplementedError
+                self.supervised_losses.append(loss_fcs)
 
             self.supervised_loss_weight = cfg.supervised.loss_weight
             self.supervised_loss_wait_iter = cfg.supervised.wait_iter
@@ -276,6 +282,12 @@ class SSLMetaArch(nn.Module):
                     nlayers=cfg.dino.head_nlayers,
                 )
             else: 
+                raise NotImplementedError
+            if cfg.domain.criterion == "CrossEntropy":
+                self.domain_loss = nn.CrossEntropyLoss()
+            elif cfg.domain.criterion == "SupConLoss":
+                self.domain_loss = losses.SupConLoss()
+            else:
                 raise NotImplementedError
 
             student_model_dict["domain_head"] = supervised_head()
