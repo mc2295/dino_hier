@@ -111,6 +111,25 @@ class CosineScheduler(object):
             return self.schedule[it]
 
 
+class ConstantScheduler(object):
+    def __init__(self, base_value, final_value, total_iters, warmup_iters=0, start_warmup_value=0, freeze_iters=0):
+        super().__init__()
+        self.value = base_value
+        self.scheduled_iters = freeze_schedule, warmup_schedule,
+
+        freeze_schedule = np.zeros((freeze_iters))
+        warmup_schedule = np.linspace(start_warmup_value, base_value, warmup_iters)
+        iters = total_iters - warmup_iters - freeze_iters
+        self.schedule = np.concatenate((freeze_schedule, warmup_schedule))
+
+        assert len(self.schedule) == self.total_iters
+
+    def __getitem__(self, it):
+        if it >= self.scheduled_iters:
+            return self.value
+        else:
+            return self.schedule[it]
+
 def has_batchnorms(model):
     bn_types = (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d, nn.SyncBatchNorm)
     for name, module in model.named_modules():

@@ -519,14 +519,14 @@ class SSLMetaArch(nn.Module):
 
         if self.do_supervised_loss and iteration > self.supervised_loss_wait_iter and images["labels"].max() > -1:
             mask = images["labels"] != -1
-            for i, losses in enumerate(self.supervised_losses):
-                cls_output = self.student["supervised_head_"+str(i)](student_cls_tokens[mask])
-                supervised_loss = 0
-                for loss in losses:
-                    supervised_loss += self.supervised_loss_weight * loss(cls_output, images["labels"].to(cls_output.device)[mask])
+
+            cls_output = self.student["supervised_head_0"](student_cls_tokens[mask])
+            supervised_loss = 0
+            for loss in self.supervised_losses[0]:
+                supervised_loss += self.supervised_loss_weight * loss(cls_output, images["labels"].to(cls_output.device)[mask])
                 loss_accumulator += supervised_loss
-                loss_dict["supervised_loss-"+str(i)] = supervised_loss / loss_scales
-        
+                loss_dict[str(loss.__class__).split(".")[-1].replace("'>","")] = supervised_loss / loss_scales
+    
         if self.do_domain_loss:
             mask = images["domain_labels"] != -1  # should not be necessary as all samples have a domain
             cls_output = self.student["domain_head"](student_cls_tokens[mask])

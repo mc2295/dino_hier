@@ -10,7 +10,7 @@ import os
 import sys
 from functools import partial
 import time
-
+#from schedulefree import AdamWScheduleFree
 sys.path.append(".")
 
 import dinov2.distributed as distributed
@@ -39,7 +39,7 @@ logger = logging.getLogger("dinov2")
 def get_args_parser(add_help: bool = True):
     parser = argparse.ArgumentParser("DINOv2 training", add_help=add_help)
     parser.add_argument(
-        "--config-file", default="./dinov2/configs/train/custom.yaml", metavar="FILE", help="path to config file"
+        "--config-file", default="/lustre/groups/shared/users/peng_marr/DinoBloomv2/configs/custom_2_alternating.yaml", metavar="FILE", help="path to config file"
     )
     parser.add_argument(
         "--no-resume",
@@ -73,7 +73,13 @@ def get_args_parser(add_help: bool = True):
 
 
 def build_optimizer(cfg, params_groups):
+    #if cfg.optimizer=="Adamw": 
     return torch.optim.AdamW(params_groups, betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2))
+    #elif cfg.optimizer=="AdamwSchedulefree": 
+    #    return torch.optim.AdamW(params_groups, betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2))
+
+def build_schedulefree_optimizer(cfg, params_groups):
+    return schedulefree.AdamWScheduleFree(params_groups, lr=args.lr)
 
 
 def build_schedulers(cfg):
