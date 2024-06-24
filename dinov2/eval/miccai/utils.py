@@ -13,68 +13,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 import os
 
-WBC_ATT_CLASS_MAPPING = {
-    'label': {
-        'Neutrophil': 0,
-        'Eosinophil': 1,
-        'Basophil': 2,
-        'Lymphocyte': 3,
-        'Monocyte': 4
-    },
-    'cell_size': {
-        'big': 0,
-        'small': 1
-    },
-    'cell_shape': {
-        'round': 0,
-        'irregular': 1
-    },
-    'nucleus_shape': {
-        'unsegmented-band': 0,
-        'unsegmented-round': 1,
-        'segmented-multilobed': 2,
-        'segmented-bilobed': 3,
-        'irregular': 4,
-        'unsegmented-indented': 5
-    },
-    'nuclear_cytoplasmic_ratio': {
-        'low': 0,
-        'high': 1
-    },
-    'chromatin_density': {
-        'densely': 0,
-        'loosely': 1
-    },
-    'cytoplasm_vacuole': {
-        'no': 0,
-        'yes': 1
-    },
-    'cytoplasm_texture': {
-        'clear': 0,
-        'frosted': 1
-    },
-    'cytoplasm_colour': {
-        'light blue': 0,
-        'blue': 1,
-        'purple blue': 2
-    },
-    'granule_type': {
-        'small': 0,
-        'round': 1,
-        'coarse': 2,
-        'nil': 3
-    },
-    'granule_colour': {
-        'pink': 0,
-        'purple': 1,
-        'red': 2,
-        'nil': 3
-    },
-    'granularity': {
-        'yes': 0,
-        'no': 1
-    }
-}
+
 
 def create_label_mapping(df):
     """
@@ -148,9 +87,72 @@ class WbcAttDataset(Dataset):
         self.transform = transform
         self.label_file = pd.read_csv(label_file)
         self.img_size=img_size
-        self.folder_routing={"MO":"monocyte","BA":"basophil","ERB":"erythroblast","MMY":"metamyelocyte", "LY":"lymphocyte_typical",
-        "MY":"myelocyte","BNE":"neutrophil_band","SNE":"neutrophil_segmented", "PMY":"promyelocyte"}
-        
+        #self.folder_routing={"MO":"monocyte","BA":"basophil","ERB":"erythroblast","MMY":"metamyelocyte", "LY":"lymphocyte_typical",
+        #"MY":"myelocyte","BNE":"neutrophil_band","SNE":"neutrophil_segmented", "PMY":"promyelocyte"}
+        self.folder_routing={"MO":"monocyte","BA":"basophil","ERB":"erythroblast","MMY":"MMY", "LY":"lymphocyte",
+        "MY":"MY","BNE":"BNE","SNE":"SNE", "PMY":"PMY","NEUTROPHIL":"NEUTROPHIL","IG":"IG","EO":"eosinophil"}
+        self.wbc_att_class_mapping = {
+            'label': {
+                'Neutrophil': 0,
+                'Eosinophil': 1,
+                'Basophil': 2,
+                'Lymphocyte': 3,
+                'Monocyte': 4
+            },
+            'cell_size': {
+                'big': 0,
+                'small': 1
+            },
+            'cell_shape': {
+                'round': 0,
+                'irregular': 1
+            },
+            'nucleus_shape': {
+                'unsegmented-band': 0,
+                'unsegmented-round': 1,
+                'segmented-multilobed': 2,
+                'segmented-bilobed': 3,
+                'irregular': 4,
+                'unsegmented-indented': 5
+            },
+            'nuclear_cytoplasmic_ratio': {
+                'low': 0,
+                'high': 1
+            },
+            'chromatin_density': {
+                'densely': 0,
+                'loosely': 1
+            },
+            'cytoplasm_vacuole': {
+                'no': 0,
+                'yes': 1
+            },
+            'cytoplasm_texture': {
+                'clear': 0,
+                'frosted': 1
+            },
+            'cytoplasm_colour': {
+                'light blue': 0,
+                'blue': 1,
+                'purple blue': 2
+            },
+            'granule_type': {
+                'small': 0,
+                'round': 1,
+                'coarse': 2,
+                'nil': 3
+            },
+            'granule_colour': {
+                'pink': 0,
+                'purple': 1,
+                'red': 2,
+                'nil': 3
+            },
+            'granularity': {
+                'yes': 0,
+                'no': 1
+            }
+        }
     def __len__(self):
         return len(self.label_file)
 
@@ -165,7 +167,7 @@ class WbcAttDataset(Dataset):
             if self.transform:
                 image = self.transform(image)
 
-            encoded_labels = [WBC_ATT_CLASS_MAPPING[key][value] for key, value in labels.items()]
+            encoded_labels = [self.wbc_att_class_mapping[key][value] for key, value in labels.items()]
             
         except Exception as e:  # Using a more general exception class here
             print(f"An error occurred at {image_path}: {e}")

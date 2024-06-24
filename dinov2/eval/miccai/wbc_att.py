@@ -71,7 +71,7 @@ parser.add_argument(
 parser.add_argument(
     "--dataset_path",
     help="path to datasetfolder",
-    default="/lustre/groups/labs/marr/qscd01/datasets/armingruber/_Domains/Acevedo_cropped/",
+    default="/ictstr01/groups/labs/marr/qscd01/datasets/Acevedo_20/PBC_divided/",
     type=str,
 )
 
@@ -136,7 +136,7 @@ def save_features_and_labels(feature_extractor, dataloader, save_dir,dataset_len
             images = images.to(device)
             batch_features = feature_extractor(images)
 
-            labels_np = labels.numpy()
+            labels_np = [l.cpu().numpy() for l in labels]
 
             for img_name, img_features, img_label in zip(names, batch_features, labels_np):
                 h5_filename = os.path.join(save_dir, f"{img_name}.h5")
@@ -164,13 +164,7 @@ def main(args):
     project=args.wandb_project,
     name= model_name +"_" +args.experiment_name,
     config=args
-    )
-
-    # If you want to log the results with Weights & Biases (wandb), you can initialize a wandb run:
-
-
-    # sorry for the bad naming here, its not yet sorted :)
-    
+    )  
 
     if model_name in ["owkin","resnet50","resnet50_full","remedis","imagebind"]:
         sorted_paths=[None]
@@ -206,48 +200,45 @@ def main(args):
         log_reg_folds=[]
         knn_folds=[]
 
-        all_features=list(feature_dir.glob("*.h5"))
-        
-        data,labels=get_data(all_features)
-        folds=create_stratified_folds(labels)
-
-
-        train_data, train_labels, test_data, test_labels= get_data(train_dir, test_dir)
+        train_data, train_labels, test_data, test_labels= get_data(feature_dir_train, feature_dir_test)
 
         print("data fully loaded")
+        for i,target_prediction in enumerate(dataset_train.wbc_att_class_mapping.items()):
+            train_label_target=[l[i] for l in train_labels]
+            test_label_target=[l[i] for l in test_labels]
+            target_prediction_str=target_prediction[0]
+            if args.logistic_regression:
+                logreg_dir = parent_dir/ (args.wandb_project+"log_reg_eval")
+                log_reg = train_and_evaluate_logistic_regression(
+                    train_data, train_label_target, test_data, test_label_target, logreg_dir, max_iter=1000
+                )
 
-        if args.logistic_regression:
-            logreg_dir = parent_dir/ (args.wandb_project+"log_reg_eval")
-            log_reg = train_and_evaluate_logistic_regression(
-                train_data, train_labels, test_data, test_labels, logreg_dir, max_iter=1000
+                log_reg_folds.append(log_reg)
+                print("logistic_regression done")
+
+            if args.umap:
+                umap_dir = parent_dir/ (args.wandb_project+"umaps")
+                umap_train = create_umap(train_data, train_label_target, umap_dir)
+                umap_test = create_umap(test_data, test_label_target, umap_dir, "test")
+                print("umap done")
+
+            if args.knn:
+                knn_dir = parent_dir / (args.wandb_project+"knn_eval")
+                knn_metrics = perform_knn(train_data, train_label_target, test_data, test_label_target, knn_dir,target_prediction_str)
+                knn_folds.append(knn_metrics)
+                print("knn done")
+
+            if checkpoint is not None and len(sorted_paths)>1:
+                step = int(parent_dir.name.split("_")[1])
+            else: 
+                step=0
+                
+            aggregated_knn=average_dicts(knn_folds)
+            aggregated_log_reg=average_dicts(log_reg_folds)
+            wandb.log(aggregated_knn, step=step)
+            wandb.log(
+                {target_prediction_str+"_log_reg": aggregated_log_reg, target_prediction_str+"_umap_test": wandb.Image(umap_test), target_prediction_str+"_umap_train": wandb.Image(umap_train)}, step=step
             )
-
-            log_reg_folds.append(log_reg)
-            print("logistic_regression done")
-
-        if args.umap:
-            umap_dir = parent_dir/ (args.wandb_project+"umaps")
-            umap_train = create_umap(train_data, train_labels, umap_dir)
-            umap_test = create_umap(test_data, test_labels, umap_dir, "test")
-            print("umap done")
-
-        if args.knn:
-            knn_dir = parent_dir / (args.wandb_project+"knn_eval")
-            knn_metrics = perform_knn(train_data, train_labels, test_data, test_labels, knn_dir)
-            knn_folds.append(knn_metrics)
-            print("knn done")
-
-        if checkpoint is not None and len(sorted_paths)>1:
-            step = int(parent_dir.name.split("_")[1])
-        else: 
-            step=0
-            
-        aggregated_knn=average_dicts(knn_folds)
-        aggregated_log_reg=average_dicts(log_reg_folds)
-        wandb.log(aggregated_knn, step=step)
-        wandb.log(
-            {"log_reg": aggregated_log_reg, "umap_test": wandb.Image(umap_test), "umap_train": wandb.Image(umap_train)}, step=step
-        )
 
 def get_data(train_dir, test_dir):
     # Define the directories for train, validation, and test data and labels
@@ -278,12 +269,10 @@ def get_data(train_dir, test_dir):
     # Convert the lists to NumPy arrays
 
     test_data = np.array(test_features)
-    test_labels = np.array(test_labels).flatten()
     # Flatten test_data
     test_data = test_data.reshape(test_data.shape[0], -1)  # Reshape to (n_samples, 384)
 
     train_data = np.array(train_features)
-    train_labels = np.array(train_labels).flatten()
     # Flatten test_data
     train_data = train_data.reshape(train_data.shape[0], -1)
 
@@ -293,37 +282,16 @@ def get_data(train_dir, test_dir):
 def process_file(file_name):
     with h5py.File(file_name, "r") as hf:
         features = torch.tensor(hf["features"][:]).tolist()
-        label = int(hf["labels"][()])
+        label = hf["labels"][()]
     return features, label
 
 
 # {"Accuracy": accuracy, "Balanced_Acc": balanced_acc, "Weighted_F1": weighted_f1}
 
 
-def get_data(all_data):
-    # Define the directories for train, validation, and test data and labels
-
-    # Load training data into dictionaries
-    features, labels = [], []
-
-    with ThreadPoolExecutor() as executor:
-        futures = [executor.submit(process_file, file_name) for file_name in all_data]
-
-        for i, future in tqdm(enumerate(futures), desc="Loading data"):
-            feature, label = future.result()
-            features.append(feature)
-            labels.append(label)
-
-    # Convert the lists to NumPy arrays
-    features = np.array(features)
-    labels = np.array(labels).flatten()
-    # Flatten test_data
-    features = features.reshape(features.shape[0], -1)  # Reshape to (n_samples, 384)
-
-    return features, labels
 
 
-def perform_knn(train_data, train_labels, test_data, test_labels, save_dir):
+def perform_knn(train_data, train_labels, test_data, test_labels, save_dir,prefix=""):
     # Define a range of values for n_neighbors to search
     n_neighbors_values = [1, 20]
     # n_neighbors_values = [1, 2, 5, 10, 20, 50, 100, 500]
@@ -359,7 +327,7 @@ def perform_knn(train_data, train_labels, test_data, test_labels, save_dir):
         current_metrics = {"accuracy": accuracy, "balanced_accuracy": balanced_acc, "weighted_f1": weighted_f1}
 
         # Store the metrics dictionary in the metrics_dict with a key indicating the number of neighbors
-        metrics_dict[f"knn_{n_neighbors}"] = current_metrics
+        metrics_dict[f"{prefix}_knn_{n_neighbors}"] = current_metrics
         # Convert the report to a Pandas DataFrame for logging
         # report_df = pd.DataFrame(report).transpose()
 
