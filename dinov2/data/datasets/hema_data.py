@@ -126,7 +126,7 @@ class HemaAlternatingDataset(VisionDataset):
         super().__init__(root, transforms, transform, target_transform)
         self.domain_target_transform = domain_target_transform
         patches_unlabeled = self.create_patch_list(Path(root)/"unlabeled")
-        patches_labeled_i = self.create_patch_list(Path(root)/"labeled_i")
+        patches_labeled_i = self.create_patch_list(Path(root)/"labeled_tmp")
         patches_labeled_ii = self.create_patch_list(Path(root)/"labeled_ii")
 
         all_patches=[patches_unlabeled,patches_labeled_i,patches_labeled_ii]
