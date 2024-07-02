@@ -151,7 +151,9 @@ class HemaAlternatingDataset(VisionDataset):
         target = self.get_target(filepath)
         domain_label = self.get_domain_label(filepath)
         if self.transforms is not None:
+
             image, target = self.transforms(image, target)
+
 
         return image, target, filepath, domain_label
     

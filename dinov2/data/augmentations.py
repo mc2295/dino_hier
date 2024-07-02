@@ -79,10 +79,10 @@ class DataAugmentationDINO(object):
         # color distorsions / blurring
         color_jittering = transforms.Compose(
             [
-                transforms.RandomApply([TintImage(((145, 155), (175, 185), (150, 180)))], p=0.05),  # blue tint
-                transforms.RandomApply([TintImage(((225, 255), (200, 230), (180, 210)))], p=0.5),  # yellow/red tint
+                #transforms.RandomApply([TintImage(((145, 155), (175, 185), (150, 180)))], p=0.05),  # blue tint
+                #transforms.RandomApply([TintImage(((225, 255), (200, 230), (180, 210)))], p=0.5),  # yellow/red tint
                 transforms.RandomApply(
-                    [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)],
+                    [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2)],
                     p=0.8,  # original p=0.8
                 ),
                 transforms.RandomGrayscale(p=0.2),  # original p=0.2, changed
