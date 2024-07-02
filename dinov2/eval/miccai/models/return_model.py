@@ -50,7 +50,10 @@ def get_models(modelname, saved_model_path=None):
 
     # --- our finetuned models
     elif modelname.lower() in ["dinov2_vits14","dinov2_vitb14","dinov2_vitl14","dinov2_vitg14"]:
-        model = get_dino_finetuned_downloaded(saved_model_path, modelname)
+        model = SSLMetaArch(cfg).to(torch.device("cuda"))
+
+    elif modelname.lower() in ["dinov2_vits14_classifier","dinov2_vitb14_classifier","dinov2_vitl14_classifier","dinov2_vitg14_classifier"]:
+        model = get_dino_student_classifier(saved_model_path, modelname)
 
     elif modelname.lower() == "vim_finetuned":
         model = get_vim_finetuned(saved_model_path)
@@ -62,6 +65,76 @@ def get_models(modelname, saved_model_path=None):
     model.eval()
 
     return model
+
+class DINOClassifier(nn.Module):
+    def __init__(self, backbone,mlp):
+        super().__init__()
+        self.backbone=backbone
+        self.mlp=mlp
+
+    def forward(self,x):
+        x=self.backbone(x)
+        return x,self.mlp(x)
+
+class MLP(nn.Module):
+    """
+    (from pytorch metric learning package)
+    layer_sizes[0] is the dimension of the input
+    layer_sizes[-1] is the dimension of the output
+    """
+    def __init__(self, layer_sizes, final_relu=False, grad_rev=False):
+        super().__init__()
+
+        layer_list = []
+        layer_sizes = [int(x) for x in layer_sizes]
+        num_layers = len(layer_sizes) - 1
+        final_relu_layer = num_layers if final_relu else num_layers - 1
+        if grad_rev:
+            layer_list.append(RevGrad())
+        for i in range(len(layer_sizes) - 1):
+            input_size = layer_sizes[i]
+            curr_size = layer_sizes[i + 1]
+            if i < final_relu_layer:
+                layer_list.append(nn.ReLU(inplace=False))
+            layer_list.append(nn.Linear(input_size, curr_size))
+
+        self.net = nn.Sequential(*layer_list)
+        self.last_linear = self.net[-1]
+
+    def forward(self, x):
+        return self.net(x)
+    
+def get_dino_student_classifier(model_path, modelname,n_classes=18):
+    modelname=modelname.replace("_classifier","")
+    model = torch.hub.load("facebookresearch/dinov2",modelname )
+    pretrained = torch.load(model_path, map_location=torch.device("cpu"))
+    # make correct state dict for loading
+    state_dict_backbone = {}
+    state_dict_mlp = {}
+    for key, value in pretrained["student"].items():
+        if "dino_head" in key or "ibot_head" in key or "supervised_head_1." in key:
+            pass
+        elif "supervised_head_0." in key:
+            new_key = key.replace("supervised_head_0.", "")
+            state_dict_mlp[new_key] = value
+        else:
+            new_key = key.replace("backbone.", "")
+            state_dict_backbone[new_key] = value
+    # change shape of pos_embed
+    input_dims = {
+        "dinov2_vits14": 384,
+        "dinov2_vitb14": 768,
+        "dinov2_vitl14": 1024,
+        "dinov2_vitg14": 1536,
+    }
+    embed_dim=input_dims[modelname]
+    pos_embed = nn.Parameter(torch.zeros(1, 257,embed_dim ))
+    model.pos_embed = pos_embed
+    # load state dict
+    model.load_state_dict(state_dict_backbone, strict=True)
+    supervised_head = MLP(layer_sizes=[embed_dim, n_classes])
+    supervised_head.load_state_dict(state_dict_mlp,strict=True)
+    return DINOClassifier(model,supervised_head)
 
 
 def get_retCCL(model_path):
@@ -77,6 +150,9 @@ def get_vim_finetuned(checkpoint=None):
 
     model = get_vision_mamba_model(checkpoint=checkpoint)
     return model
+
+
+
 
 # for 224
 def get_dino_finetuned_downloaded(model_path, modelname):
@@ -188,6 +264,7 @@ def get_transforms(model_name):
     # change later to correct value
     elif model_name.lower() in [
         "dinov2_vits14",
+        "dinov2_vits14_classifier",
         "dinov2_vitb14",
         "dinov2_vitl14",
         "dinov2_vitg14",
