@@ -256,7 +256,7 @@ class SSLMetaArch(nn.Module):
                 for loss in supervised_conf_dict.losses:
 
                     if loss == "CrossEntropy":
-                        loss_fcs.append(nn.CrossEntropyLoss())
+                        loss_fcs.append(nn.CrossEntropyLoss(ignore_index=-1))
                     elif loss == "SupConLoss":
                        loss_fcs.append(losses.SupConLoss())
                     else:
