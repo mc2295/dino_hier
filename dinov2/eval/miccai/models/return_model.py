@@ -50,7 +50,7 @@ def get_models(modelname, saved_model_path=None):
 
     # --- our finetuned models
     elif modelname.lower() in ["dinov2_vits14","dinov2_vitb14","dinov2_vitl14","dinov2_vitg14"]:
-        model = SSLMetaArch(cfg).to(torch.device("cuda"))
+        model = get_dino_finetuned_downloaded(saved_model_path,modelname)
 
     elif modelname.lower() in ["dinov2_vits14_classifier","dinov2_vitb14_classifier","dinov2_vitl14_classifier","dinov2_vitg14_classifier"]:
         model = get_dino_student_classifier(saved_model_path, modelname)
