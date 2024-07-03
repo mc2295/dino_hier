@@ -63,7 +63,7 @@ def is_sharded_fsdp(x):
 
 
 def free_if_fsdp(module):
-    if is_sharded_fsdp(x):
+    if is_sharded_fsdp(module):
         if hasattr(module, "_handles"):
             # support for FSDP with torch<2.1.0
             handles = module._handles
