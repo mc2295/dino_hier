@@ -11,10 +11,15 @@ from typing import Dict, List
 
 import torch
 import torch.distributed as dist
+from datetime import timedelta
+
+# Print environment variables
+
 
 _LOCAL_RANK = -1
 _LOCAL_WORLD_SIZE = -1
 
+print(f"Process with rank {os.environ.get('RANK')} starting")
 
 def is_enabled() -> bool:
     """
@@ -158,8 +163,8 @@ class _TorchDistributedEnvironment:
         self.local_world_size = -1
 
         # disable getting distributed settings from slurm environment
-        if _is_slurm_job_process():
-            return self._set_from_slurm_env()
+        #if _is_slurm_job_process():
+        #    return self._set_from_slurm_env()
 
         env_vars = _collect_env_vars()
         if not env_vars:
@@ -249,10 +254,14 @@ def enable(*, set_cuda_current_device: bool = True, overwrite: bool = False, all
     global _LOCAL_RANK, _LOCAL_WORLD_SIZE
     if _LOCAL_RANK >= 0 or _LOCAL_WORLD_SIZE >= 0:
         raise RuntimeError("Distributed mode has already been enabled")
+
+
     torch_env = _TorchDistributedEnvironment()
     torch_env.export(overwrite=overwrite)
 
     if set_cuda_current_device:
+        print("---------------------")
+        print("local rank:", torch_env.local_rank)
         torch.cuda.set_device(torch_env.local_rank)
 
     if allow_nccl_timeout:
@@ -261,8 +270,29 @@ def enable(*, set_cuda_current_device: bool = True, overwrite: bool = False, all
         if not overwrite:
             _check_env_variable(key, value)
         os.environ[key] = value
+    print(f"Rank: {os.environ.get('RANK')}")
+    print(f"World Size: {os.environ.get('WORLD_SIZE')}")
+    print(f"Master Addr: {os.environ.get('MASTER_ADDR')}")
+    print(f"Master Port: {os.environ.get('MASTER_PORT')}")
+    print(f"Local Rank: {os.environ.get('LOCAL_RANK')}")
+    print(f"Local World Size: {os.environ.get('LOCAL_WORLD_SIZE')}")
 
-    dist.init_process_group(backend="nccl")
+    # Set a timeout for initialization
+    timeout = timedelta(seconds=60)
+
+    print(f"CUDA is available: {torch.cuda.is_available()}")
+    print(f"Number of CUDA devices: {torch.cuda.device_count()}")
+    print(f"Current CUDA device: {torch.cuda.current_device()}")
+    print(f"CUDA device names:")
+    for i in range(torch.cuda.device_count()):
+        print(f"  Device {i}: {torch.cuda.get_device_name(i)}")
+    print(f"Local rank: {torch_env.local_rank}")
+    try:
+        dist.init_process_group(backend="gloo", timeout=timeout)
+        print(f"Successfully initialized process group for rank {dist.get_rank()}")
+    except Exception as e:
+        print(f"Error initializing process group: {str(e)}")
+    #dist.init_process_group(backend="nccl")
     dist.barrier()
 
     # Finalize setup
