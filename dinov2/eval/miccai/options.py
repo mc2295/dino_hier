@@ -84,17 +84,7 @@ class Options:
             default=None,
             type=str,
         )  #
-        self.parser.add_argument(
-            "--save_qupath_annotation", help="set True if you want nice qupath annotations", default=False, type=bool
-        )
-        self.parser.add_argument(
-            "--split",
-            help="(k,n): split slides into n distinct chunks and process number k. (0,1) for all slides at once. E.g. one urn with (0,2) and one with (1,2) to split data.",
-            default=[0, 1],
-            nargs="+",
-            type=int,
-        )
-
+   
     def parse(self):
         self.opt = self.parser.parse_args()
         args = vars(self.opt)

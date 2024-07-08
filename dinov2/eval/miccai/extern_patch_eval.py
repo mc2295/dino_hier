@@ -66,7 +66,7 @@ parser.add_argument(
 parser.add_argument(
     "--train_dataset",
     help="path to datasetfolder",
-    default="/lustre/groups/labs/marr/qscd01/datasets/armingruber/_Domains/Acevedo_cropped",
+    default="/lustre/groups/labs/marr/qscd01/datasets/armingruber/_Domains/MLL_20221220/",
     type=str,
 )
 
@@ -74,7 +74,7 @@ parser.add_argument(
     "--test_datasets",
     help="path to datasetfolder",
     default=["/lustre/groups/labs/marr/qscd01/datasets/armingruber/_Domains/Matek_cropped/",
-             "/lustre/groups/labs/marr/qscd01/datasets/armingruber/_Domains/MLL_20221220/"],
+             "/lustre/groups/labs/marr/qscd01/datasets/armingruber/_Domains/Acevedo_cropped"],
     type=str,
     nargs='*',
 )
