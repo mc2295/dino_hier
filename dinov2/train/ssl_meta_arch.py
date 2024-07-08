@@ -13,6 +13,7 @@ from dinov2.fsdp import ShardedGradScaler, get_fsdp_modules, get_fsdp_wrapper, r
 from dinov2.layers import DINOHead
 from dinov2.loss import DINOLoss, KoLeoLoss, iBOTPatchLoss
 from dinov2.models import build_model_from_cfg
+from pytorch_revgrad import RevGrad
 
 try:
     from dinov2.models.vision_mamba import get_vision_mamba_model
@@ -66,14 +67,15 @@ class MLP(nn.Module):
     layer_sizes[0] is the dimension of the input
     layer_sizes[-1] is the dimension of the output
     """
-    def __init__(self, layer_sizes, final_relu=False):
+    def __init__(self, layer_sizes, final_relu=False, grad_rev=False):
         super().__init__()
 
         layer_list = []
         layer_sizes = [int(x) for x in layer_sizes]
         num_layers = len(layer_sizes) - 1
         final_relu_layer = num_layers if final_relu else num_layers - 1
-
+        if grad_rev:
+            layer_list.append(RevGrad())
         for i in range(len(layer_sizes) - 1):
             input_size = layer_sizes[i]
             curr_size = layer_sizes[i + 1]
@@ -249,21 +251,27 @@ class SSLMetaArch(nn.Module):
                     )
                 else: 
                     raise NotImplementedError
+                loss_fcs=[]
+
+                for loss in supervised_conf_dict.losses:
+
+                    if loss == "CrossEntropy":
+                        loss_fcs.append(nn.CrossEntropyLoss(ignore_index=-1))
+                    elif loss == "SupConLoss":
+                       loss_fcs.append(losses.SupConLoss())
+                    else:
+                        raise NotImplementedError
+
                 student_model_dict["supervised_head_"+str(i)] =supervised_head()
                 
-                if cfg.domain.criterion == "CrossEntropy":
-                    self.domain_loss = nn.CrossEntropyLoss()
-                elif cfg.domain.criterion == "SupConLoss":
-                    self.domain_loss = losses.SupConLoss()
-                else:
-                    raise NotImplementedError
+                self.supervised_losses.append(loss_fcs)
 
             self.supervised_loss_weight = cfg.supervised.loss_weight
             self.supervised_loss_wait_iter = cfg.supervised.wait_iter
 
         if self.do_domain_loss:
             if cfg.domain.head == "MLP":
-                supervised_head = partial(MLP, layer_sizes=[embed_dim, cfg.domain.n_classes])
+                supervised_head = partial(MLP, layer_sizes=[embed_dim, cfg.domain.n_classes],grad_rev=True)
             elif supervised_conf_dict.head == "DINOHead":
                 supervised_head =partial(
                     DINOHead,
@@ -274,6 +282,12 @@ class SSLMetaArch(nn.Module):
                     nlayers=cfg.dino.head_nlayers,
                 )
             else: 
+                raise NotImplementedError
+            if cfg.domain.criterion == "CrossEntropy":
+                self.domain_loss = nn.CrossEntropyLoss()
+            elif cfg.domain.criterion == "SupConLoss":
+                self.domain_loss = losses.SupConLoss()
+            else:
                 raise NotImplementedError
 
             student_model_dict["domain_head"] = supervised_head()
@@ -505,15 +519,15 @@ class SSLMetaArch(nn.Module):
 
         if self.do_supervised_loss and iteration > self.supervised_loss_wait_iter and images["labels"].max() > -1:
             mask = images["labels"] != -1
-            for i, losses in enumerate(self.supervised_losses):
-                cls_output = self.student["supervised_head_"+str(i)](student_cls_tokens[mask])
-                supervised_loss = 0
-                for loss in losses:
-                    supervised_loss += self.supervised_loss_weight * loss(cls_output, images["labels"].to(cls_output.device)[mask])
+
+            cls_output = self.student["supervised_head_0"](student_cls_tokens[mask])
+            supervised_loss = 0
+            for loss in self.supervised_losses[0]:
+                supervised_loss += self.supervised_loss_weight * loss(cls_output, images["labels"].to(cls_output.device)[mask])
                 loss_accumulator += supervised_loss
-                loss_dict["supervised_loss-"+str(i)] = supervised_loss / loss_scales
-        
-        if self.do_domain_loss and iteration > self.supervised_loss_wait_iter:
+                loss_dict[str(loss.__class__).split(".")[-1].replace("'>","")] = supervised_loss / loss_scales
+    
+        if self.do_domain_loss:
             mask = images["domain_labels"] != -1  # should not be necessary as all samples have a domain
             cls_output = self.student["domain_head"](student_cls_tokens[mask])
             domain_loss = self.domain_loss(cls_output, images["domain_labels"].to(cls_output.device)[mask])

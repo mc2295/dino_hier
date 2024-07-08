@@ -7,7 +7,7 @@
 #SBATCH -c 18
 #SBATCH --mem=150G
 #SBATCH -q gpu_normal
-#SBATCH --time=10:00:00
+#SBATCH --time=1:00:00
 #SBATCH --nice=10000
 #SBATCH --gres=gpu:1
 
@@ -21,6 +21,6 @@ cd /home/icb/valentin.koch/dinov2
 conda activate feature_ex
 
 # set checkpoint to evaluate as input 
-python dinov2/eval/miccai/general_patch_eval.py --model_path "/lustre/groups/shared/users/peng_marr/DinoBloomv2/vits_alternating_con/eval/" --dataset_path /lustre/groups/labs/marr/qscd01/datasets/armingruber/_Domains/Acevedo_cropped/ --model_name dinov2_vits14 --experiment_name acevedo_vits_altern_supcon
+python dinov2/eval/miccai/wbc_att.py --model_name dinov2_vits14 --experiment_name acevedo_vits_altern_supcon_ce --evaluate_untrained_baseline
 
 
