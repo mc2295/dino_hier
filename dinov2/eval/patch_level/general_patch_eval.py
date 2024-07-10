@@ -28,7 +28,7 @@ os.environ["WANDB__SERVICE_WAIT"] = "300"
 parser.add_argument(
     "--model_name",
     help="name of model",
-    default="dinov2_vits14",
+    default="dinov2_vits14_reg",
     type=str,
 )
 
@@ -64,14 +64,14 @@ parser.add_argument(
 parser.add_argument(
     "--dataset_path",
     help="path to datasetfolder",
-    default="/lustre/groups/labs/marr/qscd01/datasets/Acevedo_20/PBC_dataset_normal_DIB/",
+    default="/lustre/groups/labs/marr/qscd01/datasets/armingruber/_Domains/Acevedo_cropped/",
     type=str,
 )
 
 parser.add_argument(
     "--model_path",
     help="path to run directory with models inside",
-    default="/home/icb/valentin.koch/dinov2/vits_hema_v2_rankloss_1708872068.641858/eval",
+    default="/home/icb/valentin.koch/dinov2/debug/eval",
     type=str,
 )
 
@@ -80,6 +80,13 @@ parser.add_argument(
     help="perform knn or not",
     default=True,
     type=bool,
+)
+
+parser.add_argument(
+    "--img_size",
+    help="size of image to be used",
+    default=448,
+    type=int,
 )
 
 parser.add_argument(
@@ -171,7 +178,7 @@ def create_stratified_folds(labels):
 def main(args):
 
     model_name = args.model_name
-    transform = get_transforms(model_name)
+    transform = get_transforms(model_name,args.img_size)
 
     # make sure encoding is always the same
 
@@ -209,10 +216,10 @@ def main(args):
             parent_dir = Path(args.model_path) / (model_name+"_baseline")
             
         print("loading checkpoint: ", checkpoint)
-        feature_extractor = get_models(model_name, saved_model_path=checkpoint)
+        feature_extractor = get_models(model_name, args.img_size, saved_model_path=checkpoint)
         feature_dir = parent_dir / args.experiment_name / "features"
         
-        dataset = PathImageDataset(args.dataset_path, transform=transform, filetype=args.filetype)
+        dataset = PathImageDataset(args.dataset_path, transform=transform, filetype=args.filetype,img_size=(args.img_size,args.img_size))
         dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
         save_features_and_labels(feature_extractor, dataloader, feature_dir,len(dataset))

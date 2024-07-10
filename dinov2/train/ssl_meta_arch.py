@@ -7,6 +7,7 @@ import logging
 import math
 from functools import partial
 
+import os
 import torch
 from pytorch_metric_learning import losses
 from dinov2.fsdp import ShardedGradScaler, get_fsdp_modules, get_fsdp_wrapper, reshard_fsdp_model
@@ -14,6 +15,7 @@ from dinov2.layers import DINOHead
 from dinov2.loss import DINOLoss, KoLeoLoss, iBOTPatchLoss
 from dinov2.models import build_model_from_cfg
 from pytorch_revgrad import RevGrad
+import requests
 
 try:
     from dinov2.models.vision_mamba import get_vision_mamba_model
@@ -91,14 +93,16 @@ class MLP(nn.Module):
 
 
 def interpolate_pos_encoding(x, w, h):
-    N = x.shape[1] - 1
+
+    offset=1
+    N = x.shape[1] - offset
     dim = x.shape[-1]
     w0 = w / int(math.sqrt(N))
     h0 = h / int(math.sqrt(N))
 
     # Interpolate the position embeddings without changing the first row (class token)
     patch_pos_embed = nn.functional.interpolate(
-        x[:, 1:].reshape(1, int(math.sqrt(N)), int(math.sqrt(N)), dim).permute(0, 3, 1, 2),
+        x[:, offset:].reshape(1, int(math.sqrt(N)), int(math.sqrt(N)), dim).permute(0, 3, 1, 2),
         scale_factor=(w0, h0),
         mode="bicubic",
     )
@@ -110,17 +114,45 @@ def interpolate_pos_encoding(x, w, h):
     # Concatenate the class token with the interpolated position embeddings
     return torch.cat((x[:, :1], patch_pos_embed), dim=1)
 
+def download_file(url, dest):
+    if not os.path.exists(dest):
+        response = requests.get(url)
+        with open(dest, 'wb') as f:
+            f.write(response.content)
+    return dest
 
-def get_downloaded_dino_vit_interpolated(modelname="dinov2_vits14"):
+def get_dinobloom(modelname):
 
+        model_urls = {
+            "dinov2_vits14": "https://zenodo.org/records/10908163/files/DinoBloom-S.pth?download=1",
+            "dinov2_vitb14": "https://zenodo.org/records/10908163/files/DinoBloom-B.pth?download=1",
+            "dinov2_vitl14": "https://zenodo.org/records/10908163/files/DinoBloom-L.pth?download=1",
+            "dinov2_vitg14": "https://zenodo.org/records/10908163/files/DinoBloom-G.pth?download=1",
+        }
+        
+        if modelname not in model_urls:
+            raise ValueError(f"Unsupported modelname: {modelname}")
+
+        model_url = model_urls[modelname]
+        cache_dir = os.path.expanduser("~/.cache/dinov2_models")
+        os.makedirs(cache_dir, exist_ok=True)
+        model_path = os.path.join(cache_dir, f"{modelname.split('_')[1]}.pth")
+        
+        download_file(model_url, model_path)
+        state_dict = torch.load(model_path)
+        return state_dict
+
+
+def get_downloaded_dino_vit_interpolated(modelname="dinov2_vits14", image_size=224):
+    n_patches = int(image_size / 14)
     model = torch.hub.load("facebookresearch/dinov2", modelname)  #
     input_tensor = model.pos_embed
-    tensor_corr_shape = interpolate_pos_encoding(input_tensor, 16, 16)
-    pos_embed = nn.Parameter(torch.zeros(1, 257))
+    tensor_corr_shape = interpolate_pos_encoding(input_tensor, n_patches, n_patches)
+    pos_embed = nn.Parameter(torch.zeros(1, n_patches))
     pos_embed.data = tensor_corr_shape
     model.pos_embed = pos_embed
-    return model
 
+    return model
 
 class SSLMetaArch(nn.Module):
     def __init__(self, cfg):
@@ -131,18 +163,12 @@ class SSLMetaArch(nn.Module):
         student_model_dict = dict()
         teacher_model_dict = dict()
 
-        if cfg.student.arch in ["dinov2_vits14","dinov2_vitb14","dinov2_vitl14","dinov2_vitg14"]:
-            student_backbone = get_downloaded_dino_vit_interpolated(cfg.student.arch)
-            teacher_backbone = get_downloaded_dino_vit_interpolated(cfg.student.arch)
+        if cfg.student.arch in ["dinov2_vits14","dinov2_vitb14","dinov2_vitl14","dinov2_vitg14","dinov2_vits14_reg","dinov2_vitb14_reg","dinov2_vitl14_reg","dinov2_vitg14_reg"]:
+            student_backbone = get_downloaded_dino_vit_interpolated(cfg.student.arch,image_size=cfg.crops.global_crops_size)
+            teacher_backbone = get_downloaded_dino_vit_interpolated(cfg.student.arch,image_size=cfg.crops.global_crops_size)
             embed_dict={"dinov2_vits14":384,"dinov2_vitb14":768,"dinov2_vitl14":1024,"dinov2_vitg14":1536}
-            embed_dim = embed_dict[cfg.student.arch]
+            embed_dim = embed_dict[cfg.student.arch.replace("_reg","")]
             
-        elif cfg.student.arch == "vim_tiny":
-            from dinov2.models.vision_mamba import get_vision_mamba_model
-
-            student_backbone = get_vision_mamba_model(cfg.student.interpolate_antialias, cfg.student.interpolate_offset)
-            teacher_backbone = get_vision_mamba_model(cfg.student.interpolate_antialias, cfg.student.interpolate_offset)
-            embed_dim = 192
         else:
             student_backbone, teacher_backbone, embed_dim = build_model_from_cfg(cfg)
 
@@ -301,10 +327,38 @@ class SSLMetaArch(nn.Module):
                     raise NotImplementedError
             
             self.domain_loss_weight = cfg.domain.loss_weight
-
+        
+        
         self.need_to_synchronize_fsdp_streams = True
         self.student = nn.ModuleDict(student_model_dict)
         self.teacher = nn.ModuleDict(teacher_model_dict)
+
+        if cfg.start_from_dinobloom:
+            state_dict=get_dinobloom(cfg.student.arch)
+
+            if state_dict["teacher"]["backbone.pos_embed"].shape != self.student.backbone.pos_embed.shape:
+                n_patches = int((self.student.backbone.pos_embed.shape[1]-1)**0.5)
+                input_tensor = state_dict["teacher"]["backbone.pos_embed"]
+                tensor_corr_shape = interpolate_pos_encoding(input_tensor, n_patches, n_patches)
+                pos_embed = nn.Parameter(torch.zeros(1, n_patches))
+                pos_embed.data = tensor_corr_shape
+                state_dict["teacher"]["backbone.pos_embed"] = pos_embed
+
+            self.student.load_state_dict(state_dict["teacher"],strict=False)
+
+            # just for logging purposes we see which keys could get matched
+            original_teacher_keys = set(self.teacher.state_dict().keys())
+            # Load the state dictionary with strict=False
+            missing_keys, unexpected_keys = self.teacher.load_state_dict(state_dict["teacher"], strict=False)
+            
+            # Determine the loaded keys
+            loaded_keys = set(state_dict["teacher"].keys()) - set(missing_keys)
+            successfully_loaded_keys = loaded_keys & original_teacher_keys
+            
+            # Print the results
+            print("Successfully loaded keys:", successfully_loaded_keys)
+            print("Missing keys:", missing_keys)
+            print("Unexpected keys:", unexpected_keys)
 
         # there is no backpropagation through the teacher, so no need for gradients
         for p in self.teacher.parameters():
@@ -624,16 +678,17 @@ class SSLMetaArch(nn.Module):
                 self.teacher[k] = get_fsdp_wrapper(teacher_model_cfg, modules_to_wrap={BlockChunk})(self.teacher[k])
 
     @staticmethod
-    def interpolate_pos_encoding(x, w, h):
-        # from Benedikt Roth, adapted from interpolate_pos_encoding in dinov2/dinov2/models/vision_transformer.py
-        N = x.shape[1] - 1
+    def interpolate_pos_encoding(x, w, h,register=False):
+
+        offset=1
+        N = x.shape[1] - offset
         dim = x.shape[-1]
         w0 = w / int(math.sqrt(N))
         h0 = h / int(math.sqrt(N))
 
         # Interpolate the position embeddings without changing the first row (class token)
         patch_pos_embed = nn.functional.interpolate(
-            x[:, 1:].reshape(1, int(math.sqrt(N)), int(math.sqrt(N)), dim).permute(0, 3, 1, 2),
+            x[:, offset:].reshape(1, int(math.sqrt(N)), int(math.sqrt(N)), dim).permute(0, 3, 1, 2),
             scale_factor=(w0, h0),
             mode="bicubic",
         )

@@ -23,7 +23,7 @@ from transformers import BeitFeatureExtractor, Data2VecVisionModel, ViTModel, Au
 # DINO_VIT_S_PATH_FINETUNED_DOWNLOADED="/lustre/scratch/users/benedikt.roth/dinov2_vitg_interpolated_224_NCT-CRC_downloaded_model_finetuned/eval/training_119999/teacher_checkpoint.pth"
 
 
-def get_models(modelname, saved_model_path=None):
+def get_models(modelname, image_size, saved_model_path=None):
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -49,8 +49,8 @@ def get_models(modelname, saved_model_path=None):
         model = BeitModel(device)    
 
     # --- our finetuned models
-    elif modelname.lower() in ["dinov2_vits14","dinov2_vitb14","dinov2_vitl14","dinov2_vitg14"]:
-        model = get_dino_finetuned_downloaded(saved_model_path,modelname)
+    elif modelname.lower().replace("_reg","") in ["dinov2_vits14","dinov2_vitb14","dinov2_vitl14","dinov2_vitg14"]:
+        model = get_dino_finetuned_downloaded(saved_model_path,modelname,image_size)
 
     elif modelname.lower() in ["dinov2_vits14_classifier","dinov2_vitb14_classifier","dinov2_vitl14_classifier","dinov2_vitg14_classifier"]:
         model = get_dino_student_classifier(saved_model_path, modelname)
@@ -155,7 +155,7 @@ def get_vim_finetuned(checkpoint=None):
 
 
 # for 224
-def get_dino_finetuned_downloaded(model_path, modelname):
+def get_dino_finetuned_downloaded(model_path, modelname,image_size):
     model = torch.hub.load("facebookresearch/dinov2", modelname)
     # load finetuned weights
 
@@ -177,7 +177,8 @@ def get_dino_finetuned_downloaded(model_path, modelname):
             "dinov2_vitl14": 1024,
             "dinov2_vitg14": 1536,
         }
-        pos_embed = nn.Parameter(torch.zeros(1, 257, input_dims[modelname]))
+        num_tokens=int(1+(image_size/14)**2)
+        pos_embed = nn.Parameter(torch.zeros(1, num_tokens, input_dims[modelname.replace("_reg","")]))
         model.pos_embed = pos_embed
         # load state dict
         model.load_state_dict(new_state_dict, strict=True)
@@ -233,7 +234,7 @@ def multiply_by_255(img):
     return img * 255
 
 
-def get_transforms(model_name):
+def get_transforms(model_name,image_size=224):
     # from imagenet, leave as is
     mean = (0.485, 0.456, 0.406)
     std = (0.229, 0.224, 0.225)
@@ -262,7 +263,7 @@ def get_transforms(model_name):
         mean = (0.48145466, 0.4578275, 0.40821073)
         std = (0.26862954, 0.26130258, 0.27577711)
     # change later to correct value
-    elif model_name.lower() in [
+    elif model_name.lower().replace("_reg","") in [
         "dinov2_vits14",
         "dinov2_vits14_classifier",
         "dinov2_vitb14",
@@ -274,7 +275,7 @@ def get_transforms(model_name):
         "remedis",
         "vim_finetuned",
     ]:
-        size = 224
+        size = image_size
     elif "sam" in model_name.lower():
         size = 1024
         mean = (123.675, 116.28, 103.53)
