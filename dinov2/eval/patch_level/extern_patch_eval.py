@@ -18,9 +18,11 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.neighbors import KNeighborsClassifier
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from utils import PathImageDataset, create_label_mapping_from_paths
-
 import wandb
+
+from dataset import PathImageDataset
+from utils import create_label_mapping_from_paths
+
 
 parser = argparse.ArgumentParser(description="Feature extraction")
 os.environ["WANDB__SERVICE_WAIT"] = "300"
