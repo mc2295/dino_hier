@@ -1,3 +1,6 @@
+# this script evaluates the MLP classification head trained. Not sure if all is correct as performance seems too low.
+
+
 import argparse
 import os
 from concurrent.futures import ThreadPoolExecutor

@@ -1,3 +1,6 @@
+# this script evaluates datasets where we have a fixed split , e.g. part is used to train dinobloom
+
+
 import argparse
 import os
 from concurrent.futures import ThreadPoolExecutor
