@@ -1,3 +1,5 @@
+# used to evaluate external datasets in knn and logreg.
+
 import argparse
 import os
 from concurrent.futures import ThreadPoolExecutor

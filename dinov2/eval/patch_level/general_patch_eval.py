@@ -1,3 +1,6 @@
+#### This script evaluates 5 fold CV on a dataset: knn and logreg on the features
+
+
 import argparse
 import os
 from concurrent.futures import ThreadPoolExecutor

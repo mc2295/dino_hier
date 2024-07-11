@@ -1,3 +1,5 @@
+#external evaulation but we train on two datasets and test on one (ali et al. setup)
+
 import argparse
 import os
 from concurrent.futures import ThreadPoolExecutor
