@@ -18,7 +18,7 @@ from sklearn.metrics import (accuracy_score, balanced_accuracy_score,
 from sklearn.neighbors import KNeighborsClassifier
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from utils import CustomImageDataset
+from dataset import CustomImageDataset
 
 parser = argparse.ArgumentParser(description="Feature extraction")
 os.environ["WANDB__SERVICE_WAIT"] = "300"

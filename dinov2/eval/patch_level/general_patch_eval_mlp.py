@@ -19,7 +19,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.neighbors import KNeighborsClassifier
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from utils import PathImageDataset
+from dataset import PathImageDataset
 import wandb
 
 parser = argparse.ArgumentParser(description="Feature extraction")

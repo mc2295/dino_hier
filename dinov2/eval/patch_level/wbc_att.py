@@ -18,7 +18,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.neighbors import KNeighborsClassifier
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from utils import WbcAttDataset
+from dataset import WbcAttDataset
 import wandb
 
 parser = argparse.ArgumentParser(description="Feature extraction")
@@ -35,7 +35,7 @@ parser.add_argument(
 parser.add_argument(
     "--experiment_name",
     help="name of experiment",
-    default="acevedo_rankloss",
+    default="wbc_att",
     type=str,
 )
 
