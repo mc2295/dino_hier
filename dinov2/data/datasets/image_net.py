@@ -87,7 +87,7 @@ class ImageNet(ExtendedVisionDataset):
 
     def _save_extra(self, extra_array: np.ndarray, extra_path: str) -> None:
         extra_full_path = self._get_extra_full_path(extra_path)
-        os.makedirs(self._extra_root, exist_ok=True)
+        os.makedirs(self._extra_root, exist_ok=True, mode=0o777)
         np.save(extra_full_path, extra_array)
 
     @property
