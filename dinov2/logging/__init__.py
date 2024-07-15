@@ -69,8 +69,8 @@ def _configure_logger(
             global_rank = distributed.get_global_rank()
             filename = filename + ".rank{}".format(global_rank)
 
-        os.makedirs(os.path.dirname(filename), exist_ok=True)
-
+        os.makedirs(os.path.dirname(filename), exist_ok=True, mode=0o777)
+        os.chmod(os.path.dirname(filename), 0o777)
         handler = logging.StreamHandler(open(filename, "a"))
         handler.setLevel(logging.DEBUG)
         handler.setFormatter(formatter)

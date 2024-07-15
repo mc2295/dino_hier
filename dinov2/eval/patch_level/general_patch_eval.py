@@ -88,7 +88,7 @@ parser.add_argument(
 parser.add_argument(
     "--img_size",
     help="size of image to be used",
-    default=448,
+    default=224,
     type=int,
 )
 
@@ -129,7 +129,7 @@ def save_features_and_labels(feature_extractor, dataloader, save_dir,dataset_len
 
     print("extracting features..")
     os.makedirs(save_dir, exist_ok=True, mode=0o777)
-
+    os.chmod(save_dir, 0o777)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     with torch.no_grad():
@@ -322,7 +322,7 @@ def perform_knn(train_data, train_labels, test_data, test_labels, save_dir):
     # n_neighbors_values = [1, 2, 3, 4, 5] # -> for testing
     metrics_dict = {}
     os.makedirs(save_dir, exist_ok=True, mode=0o777)
-
+    os.chmod(save_dir, 0o777)
     for n_neighbors in n_neighbors_values:
         # Initialize a KNeighborsClassifier with the current n_neighbors
         knn = KNeighborsClassifier(n_neighbors=n_neighbors)
@@ -426,8 +426,8 @@ def create_umap(data, labels, save_dir, filename_addon="train"):
     # Specify the directory for saving the images
 
     umap_dir = os.path.join(save_dir, "umaps")
-    os.makedirs(umap_dir, exist_ok=True)
-
+    os.makedirs(umap_dir, exist_ok=True, mode=0o777)
+    os.chmod(umap_dir, 0o777)
     # Loop through different figure sizes
     size = (12, 8)  # Add more sizes as needed
 
@@ -471,6 +471,7 @@ def train_and_evaluate_logistic_regression(train_data, train_labels, test_data, 
     df_labels_to_save = pd.DataFrame({"True Labels": test_labels, "Predicted Labels": test_predictions})
     filename = f"{Path(save_dir).name}_labels_and_predictions.csv"
     os.makedirs(save_dir, exist_ok=True, mode=0o777)
+    os.chmod(save_dir, 0o777)
     file_path = os.path.join(save_dir, filename)
     # Speichern des DataFrames in der CSV-Datei
     df_labels_to_save.to_csv(file_path, index=False)
