@@ -71,14 +71,14 @@ parser.add_argument(
 parser.add_argument(
     "--dataset_path",
     help="path to datasetfolder",
-    default="/ictstr01/groups/labs/marr/qscd01/datasets/Acevedo_20/PBC_divided/",
+    # default="/ictstr01/groups/labs/marr/qscd01/datasets/Acevedo_20/PBC_divided/",
     type=str,
 )
 
 parser.add_argument(
     "--model_path",
     help="path to run directory with models inside",
-    default="/lustre/groups/shared/users/peng_marr/DinoBloomv2/vits_supcon_ce_no_koleo/eval",
+    # default="/lustre/groups/shared/users/peng_marr/DinoBloomv2/vits_supcon_ce_no_koleo/eval",
     type=str,
 )
 
