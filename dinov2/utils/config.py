@@ -66,6 +66,7 @@ def setup(args):
     """
     cfg = get_cfg_from_args(args)
     os.makedirs(args.output_dir, exist_ok=True, mode=0o777)
+    os.chmod(args.output_dir, 0o777)
     default_setup(args)
     apply_scaling_rules_to_cfg(cfg)
     write_config(cfg, args.output_dir)

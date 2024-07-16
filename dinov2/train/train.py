@@ -25,6 +25,7 @@ from dinov2.data import (
     make_data_loader,
     make_dataset,
 )
+
 from dinov2.fsdp import FSDPCheckpointer
 from dinov2.logging import MetricLogger
 from dinov2.train.ssl_meta_arch import SSLMetaArch
@@ -34,7 +35,6 @@ from fvcore.common.checkpoint import PeriodicCheckpointer
 
 torch.backends.cuda.matmul.allow_tf32 = True  # PyTorch 1.12 sets this to False by default
 logger = logging.getLogger("dinov2")
-
 
 def get_args_parser(add_help: bool = True):
     parser = argparse.ArgumentParser("DINOv2 training", add_help=add_help)
@@ -52,9 +52,8 @@ def get_args_parser(add_help: bool = True):
 
     parser.add_argument(
         "--output-dir",
-        
         "--output_dir",
-        default="",
+        default="/ictstr01/groups/shared/users/peng_marr/DinoBloomv2/debugg",
         type=str,
         help="Output directory to save logs and checkpoints",
     )
@@ -149,6 +148,8 @@ def do_test(cfg, model, iteration):
         iterstring = str(iteration)
         eval_dir = os.path.join(cfg.train.output_dir, "eval", iterstring)
         os.makedirs(eval_dir, exist_ok=True, mode=0o777)
+        os.chmod(eval_dir, 0o777)
+        os.chmod(cfg.train.output_dir, 0o777)
         # save teacher checkpoint
         teacher_ckp_path = os.path.join(eval_dir, "teacher_checkpoint.pth")
         torch.save({"teacher": new_state_dict}, teacher_ckp_path)

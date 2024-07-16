@@ -27,8 +27,8 @@ def tile_image(image_path, output_dir, tile_size=(512, 512)):
 def main():
     output_dir = "processed_images"
     if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
+        os.makedirs(output_dir,exist_ok=True, mode=0o777)
+        os.chmod(output_dir, 0o777)
     for file in os.listdir('.'):
         if file.endswith('.png'):
             file_path = os.path.join('.', file)
