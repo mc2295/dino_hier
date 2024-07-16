@@ -1,23 +1,31 @@
+import argparse
+import os
+import random
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+
+import h5py
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-from torch.utils.data import DataLoader, Dataset, Subset
 import torch.optim as optim
-from sklearn.model_selection import KFold, train_test_split, StratifiedShuffleSplit
-from sklearn.metrics import balanced_accuracy_score, precision_recall_fscore_support
+from models.aggregators import *
+from sklearn.metrics import (balanced_accuracy_score,
+                             precision_recall_fscore_support)
+from sklearn.model_selection import (KFold, StratifiedShuffleSplit,
+                                     train_test_split)
 from torch.optim.lr_scheduler import CosineAnnealingLR
-import argparse
+from torch.utils.data import DataLoader, Dataset, Subset
 
-
-import random
-import os
-import h5py
 import wandb
+from dinov2.eval.patch_level.dataset import PathImageDataset
+from dinov2.eval.patch_level.general_patch_eval import save_features_and_labels
+from dinov2.eval.patch_level.models.return_model import (get_models,
+                                                         get_transforms)
 
 
-
-class WbcMilFeatureDataset(Dataset):
+class MILFeatureDataset(Dataset):
     def __init__(self, data_path):
         self.data_path = data_path
         self.features_dict = {}
@@ -184,7 +192,7 @@ class EarlyStopping:
                 self.early_stop = True
 
 
-class run_wbc_mil:
+class RunMIL:
     def __init__(self, 
                  device, 
                  num_epochs,
@@ -196,16 +204,15 @@ class run_wbc_mil:
         self.batch_size = batch_size
         self.latent_dim=latent_dim
 
-        self.class_count = class_count
-        self.multi_attention = multi_attention
+        self.num_classes = class_count
 
         self.criterion = nn.CrossEntropyLoss()
         self.device = device
         self.num_epochs = num_epochs
 
-        self.kfold_train_val = KFold(n_splits=4, shuffle=True)
-
         self.test_loader = DataLoader(dataset_test, batch_size=1)
+
+
 
     def forward(self):
 
@@ -223,9 +230,10 @@ class run_wbc_mil:
             input_ex, _ = dataset_train_val[0]
             latent_dim = input_ex.shape[1]
 
-            self.model = wbc_mil(class_count=self.class_count, multi_attention=self.multi_attention, latent_dim=self.latent_dim)
+            # self.model = wbc_mil(class_count=self.class_count, multi_attention=self.multi_attention, latent_dim=self.latent_dim)
+            self.model = ABMIL(num_classes=self.num_classes, input_dim=self.latent_dim)
 
-            self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.001, momentum=0.9, nesterov=True)
+            self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=0.001, momentum=0.9, nesterov=True)
             self.scheduler = CosineAnnealingLR(self.optimizer, T_max=num_epochs)
             
             best_model = self.train_fold(fold, train_loader, val_loader)
@@ -315,64 +323,222 @@ class run_wbc_mil:
         return avg_loss, balanced_acc, f1_weighted
 
 
+def get_eval_metrics(
+    targets_all: Union[List[int], np.ndarray],
+    preds_all: Union[List[int], np.ndarray],
+    probs_all: Optional[Union[List[float], np.ndarray]] = None,
+    get_report: bool = True,
+    prefix: str = "",
+    roc_kwargs: Dict[str, Any] = {},
+) -> Dict[str, Any]:
+    """
+    Calculate evaluation metrics and return the evaluation metrics.
+
+    Args:
+        targets_all (array-like): True target values.
+        preds_all (array-like): Predicted target values.
+        probs_all (array-like, optional): Predicted probabilities for each class. Defaults to None.
+        get_report (bool, optional): Whether to include the classification report in the results. Defaults to True.
+        prefix (str, optional): Prefix to add to the result keys. Defaults to "".
+        roc_kwargs (dict, optional): Additional keyword arguments for calculating ROC AUC. Defaults to {}.
+
+    Returns:
+        dict: Dictionary containing the evaluation metrics.
+
+    """
+    bacc = balanced_accuracy_score(targets_all, preds_all)
+    kappa = cohen_kappa_score(targets_all, preds_all, weights="quadratic")
+    acc = accuracy_score(targets_all, preds_all)
+    cls_rep = classification_report(targets_all, preds_all, output_dict=True, zero_division=0)
+
+    eval_metrics = {
+        f"{prefix}/acc": acc,
+        f"{prefix}/bacc": bacc,
+        f"{prefix}/kappa": kappa,
+        f"{prefix}/weighted_f1": cls_rep["weighted avg"]["f1-score"],
+    }
+
+    if get_report:
+        eval_metrics[f"{prefix}/report"] = cls_rep
+
+    if probs_all is not None:
+        unique_classes = np.unique(targets_all)
+        loss = log_loss(targets_all, probs_all, labels=unique_classes)
+        eval_metrics[f"{prefix}/loss"] = loss
+        roc_auc = roc_auc_score(targets_all, probs_all, labels=unique_classes, **roc_kwargs)
+        
+        eval_metrics[f"{prefix}/auroc"] = roc_auc
+    
+    for key, value in eval_metrics.items():
+        print(f"{key.split('/')[-1]: <12}: {np.round(value, 4):.4f}")
+
+    return eval_metrics
+
+
+def train_evaluate_mil(
+        train_data, test_data, num_classes,
+        num_epochs = 20, random_state=0, dropout=0.25, n_heads=1, prefix="", wandb=False
+    ):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    torch.manual_seed(random_state)
+
+    if wandb:
+        wandb.config({
+            "num_epochs": num_epochs,
+            "random_state": random_state,
+            "dropout": dropout,
+            "n_heads": n_heads,
+            "lr": 0.0001,
+            "weight_decay": 1.0e-05,
+        })
+
+    print(f"# train samples: {len(train_data)}, # val samples: {len(val_data)}, # test samples: {len(test_data)}")
+    train_loader = DataLoader(train_data, batch_size=1, shuffle=True)
+    val_loader = DataLoader(val_data, batch_size=1, shuffle=False)
+    test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
+
+    # Initialize the model, loss function and optimizer
+    in_dim = train_data[0][0].shape[-1]
+    model = models.__dict__[cfg.arch](input_dim=in_dim, num_classes=num_classes)
+    model = model.to(device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.AdamW(model.parameters(), lr=0.0001, weight_decay=1.0e-05)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
+
+    # Train the model
+    for epoch in tqdm(range(num_epochs), desc=f"Training {cfg.arch}"):
+        model.train()
+        for inputs, labels in tqdm(train_loader):
+            outputs = model(inputs.to(device))
+            loss = criterion(outputs, labels.to(device))
+            
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+        scheduler.step()
+
+        tqdm.write(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}, Validation Loss: {val_loss:.4f}')
+        
+    # Test the model
+    model.eval()
+    with torch.no_grad():
+        test_preds_list, test_probs_list, test_labels_list = [], [], []
+        for inputs, labels in test_loader:
+            outputs = model(inputs.to(device))
+            _, test_preds = torch.max(outputs, 1)
+            test_preds_list.append(test_preds)
+            test_labels_list.append(labels)
+
+            if num_classes == 2:
+                test_probs = nn.Softmax(dim=1)(outputs)[:, 1]
+                roc_kwargs = {}
+            else:
+                test_probs = nn.Softmax(dim=1)(outputs)
+                roc_kwargs = {'multi_class': 'ovo', 'average': 'macro'} 
+            test_probs_list.append(test_probs) 
+
+    test_labels = torch.cat(test_labels_list).cpu().numpy()
+    test_preds = torch.cat(test_preds_list).cpu().numpy()
+    test_probs = torch.cat(test_probs_list).cpu().numpy()
+
+    return get_eval_metrics(test_labels, test_preds, test_probs, roc_kwargs=roc_kwargs, prefix=prefix)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train a WBC MIL model.')
-    parser.add_argument('--data_path', 
-                        type=str, 
-                        required=True, 
-                        help='Path to the training data directory',
-                        default='dinov2_vits_orig')
-    parser.add_argument('--wandb_name', 
-                        type=str, 
-                        help='Name of the run in wandb',
-                        default='wbc_mil_dinov2_vits14')
+    # parser.add_argument('--data_path', 
+    #                     type=str, 
+    #                     required=True, 
+    #                     help='Path to the training data directory',
+    #                     default='dinov2_vits_orig')
+    # parser.add_argument('--checkpoint', 
+    #                     type=str, 
+    #                     help='checkpoint to evaluate')   
+    parser.add_argument(
+        "--img_size",
+        help="size of image to be used",
+        default=224,
+        type=int,
+    )
+    parser.add_argument(
+        "--filetype",
+        help="name of filending",
+        default=".jpg",
+        type=str,
+    )
+    parser.add_argument(
+        "--batch_size",
+        default=64,
+        type=int,
+    )
+    parser.add_argument(
+        "--num_workers",
+        help="num workers to load data",
+        default=16,
+        type=int,
+    )
+                        
 
     args = parser.parse_args()
 
-    # wandb.init(project="histo-collab", entity="s-kazeminia-90", name=args.wandb_name) 
+    args.checkpoint = '/lustre/groups/shared/users/peng_marr/DinoBloomv2/vits_supcon_no_koleo/eval/training_99999/'
+    args.model_path = '/lustre/groups/shared/users/peng_marr/DinoBloomv2/vits_supcon_no_koleo/eval/training_99999/'
+    checkpoint_root = Path(args.checkpoint).parent.parent
+    model_name = 'dinov2_vits14'
+    dataset = 'AML_Hehr'
+    wandb.init(project="histo-collab", entity="DinoBloomv2-MIL-eval", name=checkpoint_root.name+'_'+dataset, mode='disabled') 
     
-    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
-    num_epochs = 150
+    num_epochs = 20
 
-    class_count = 5
-    multi_attention = True
+    num_classes = 5
     batch_size = 1
 
-    # wandb.config = {
-    #     "learning_rate": 0.001,
-    #     "epochs": num_epochs,
-    #     "batch_size": batch_size,
-    #     "class_count": class_count,
-    #     "multi_attention": multi_attention,
-    #     }
+    # extract embeddings
+    feature_dir = checkpoint_root / 'features'
+    feature_dir.mkdir(exist_ok=True, parents=True, mode=0o777)
+    data_root = '/lustre/groups/labs/marr/qscd01/datasets/210526_mll_mil_pseudonymized/splitted_data/'
 
-    root_features_path = '/lustre/groups/labs/marr/qscd01/datasets/210526_mll_mil_pseudonymized/splitted_extracted_features/'
-    data_path_train = os.path.join(root_features_path, args.data_path, 'test')
-    data_path_test = os.path.join(root_features_path, args.data_path, 'test')
+    # Load the model
+    if model_name in ["owkin","resnet50","resnet50_full","remedis","imagebind"]:
+        sorted_paths=[None]
+    elif model_name in ["retccl","ctranspath"]:
+        sorted_paths=[Path(args.model_path)]
+    else:
+        sorted_paths = list(Path(args.model_path).rglob("*teacher_checkpoint.pth"))
 
-    # Initialize dataset and dataloader
-    dataset_train_val = WbcMilFeatureDataset(data_path_train)
-    datset_test = WbcMilFeatureDataset(data_path_test)
+    for checkpoint in sorted_paths:
+        feature_extractor = get_models(model_name, args.img_size, saved_model_path=checkpoint)
+        transform = get_transforms(model_name, args.img_size)
 
-    input_ex, _ = dataset_train_val[0]
-    latent_dim = input_ex.shape[1]
-    
-    accuracies = []
-    f1s = []
+        dataset = PathImageDataset(data_root, transform=transform, filetype=args.filetype, img_size=(args.img_size,args.img_size))
+        dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
-    for run in range(5):
-        obj = run_wbc_mil(device,
-                    num_epochs,
-                    dataset_train_val, datset_test, batch_size,
-                    class_count, multi_attention, latent_dim)
-        model, acc, f1 = obj.forward()
-        accuracies.append(acc)
-        f1s.append(f1)
-    print("Accuracy_average: ", np.mean(accuracies), " std: ", np.std(accuracies))
-    print("f1_average: ", np.mean(f1s), " std: ", np.std(f1s))
+        save_features_and_labels(feature_extractor, dataloader, feature_dir, len(dataset))
 
-    # wandb.finish()
+        if len(sorted_paths)>1:
+            sorted_paths = sorted(sorted_paths, key=sort_key)
+        if args.evaluate_untrained_baseline:
+            sorted_paths.insert(0, None)
+
+        root_features_path = '/lustre/groups/labs/marr/qscd01/datasets/210526_mll_mil_pseudonymized/splitted_extracted_features/'
+        data_path_train = os.path.join(root_features_path, args.data_path, 'test')
+        data_path_test = os.path.join(root_features_path, args.data_path, 'test')
+
+        # Initialize dataset and dataloader
+        dataset_train_val = MILFeatureDataset(data_path_train)
+        datset_test = MILFeatureDataset(data_path_test)
+
+        input_ex, _ = dataset_train_val[0]
+        latent_dim = input_ex.shape[1]
+        
+        results = train_evaluate_mil(dataset_train_val, datset_test, num_classes, random_state=run, dropout=0.25, n_heads=1, prefix="", wandb=True)
+
+        wandb.log(results)
+
+        for key, value in results.items():
+            print(f"{key.split('/')[-1]: <12}: {np.round(value, 4):.4f}")
 
 
     
