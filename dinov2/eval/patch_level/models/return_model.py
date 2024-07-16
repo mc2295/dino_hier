@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
-from models.ctran import ctranspath
-from models.imagebind import imagebind_huge
-from models.resnet_retccl import resnet50 as retccl_res50
-from models.sam import build_sam_vit_b, build_sam_vit_h, build_sam_vit_l
+from dinov2.eval.patch_level.models.ctran import ctranspath
+from dinov2.eval.patch_level.models.imagebind import imagebind_huge
+from dinov2.eval.patch_level.models.resnet_retccl import resnet50 as retccl_res50
+from dinov2.eval.patch_level.models.sam import build_sam_vit_b, build_sam_vit_h, build_sam_vit_l
 
 from torchvision import transforms
 from torchvision.models import resnet
