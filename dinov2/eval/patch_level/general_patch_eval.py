@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 import torch
 import umap
-from models.return_model import get_models, get_transforms
 from PIL import Image
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score,
@@ -21,8 +20,11 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.neighbors import KNeighborsClassifier
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from dataset import PathImageDataset
+
 import wandb
+from dinov2.eval.patch_level.dataset import PathImageDataset
+from dinov2.eval.patch_level.models.return_model import (get_models,
+                                                         get_transforms)
 
 parser = argparse.ArgumentParser(description="Feature extraction")
 os.environ["WANDB__SERVICE_WAIT"] = "300"
