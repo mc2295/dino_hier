@@ -1,12 +1,17 @@
 """
 taken from feature_extraction branch from HistoBistro
 """
+from pathlib import Path
+
 import pandas as pd
 from PIL import Image
 from torch.utils.data import Dataset
 import os
 from pathlib import Path
 from utils import create_label_mapping_from_paths
+
+from dinov2.eval.patch_level.utils import create_label_mapping, create_label_mapping_from_paths
+
 
 class WBCMILDataset(Dataset):
     def __init__(self, data_path, transform):
