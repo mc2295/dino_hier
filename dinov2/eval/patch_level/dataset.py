@@ -4,6 +4,9 @@ taken from feature_extraction branch from HistoBistro
 import pandas as pd
 from PIL import Image
 from torch.utils.data import Dataset
+import os
+from pathlib import Path
+from utils import create_label_mapping_from_paths
 
 class WBCMILDataset(Dataset):
     def __init__(self, data_path, transform):
