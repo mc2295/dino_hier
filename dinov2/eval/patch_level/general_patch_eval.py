@@ -44,7 +44,7 @@ parser.add_argument(
 
 parser.add_argument(
     "--filetype",
-    help="name of filending",
+    help="name of file ending",
     default=".jpg",
     type=str,
 )
@@ -74,7 +74,7 @@ parser.add_argument(
 parser.add_argument(
     "--model_path",
     help="path to run directory with models inside",
-    default="/home/icb/valentin.koch/dinov2/debug/eval",
+    default="/ictstr01/groups/shared/users/peng_marr/DinoBloomv2/vits_sophia_debug/eval/",
     type=str,
 )
 
