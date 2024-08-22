@@ -2,7 +2,7 @@
 # install in your conda/docker enviroment using: pip install timm-0.5.4.tar
 import timm
 import torch.nn as nn
-from timm.models.layers.helpers import to_2tuple
+from timm.models.layers import to_2tuple
 
 
 class ConvStem(nn.Module):
