@@ -27,6 +27,12 @@ from dataset import CustomImageDataset
 parser = argparse.ArgumentParser(description="Feature extraction")
 os.environ["WANDB__SERVICE_WAIT"] = "300"
 
+parser.add_argument(
+    "--img_size",
+    help="size of image to be used",
+    default=224,
+    type=int,
+)
 
 parser.add_argument(
     "--model_name",
@@ -196,7 +202,7 @@ def main(args):
             parent_dir = Path(args.run_path) / (model_name+"_baseline")
             
         print("loading checkpoint: ", checkpoint)
-        feature_extractor = get_models(model_name, saved_model_path=checkpoint)
+        feature_extractor = get_models(model_name, args.img_size, saved_model_path=checkpoint)
         feature_dir = parent_dir / args.run_name
 
         train_dir = os.path.join(feature_dir, "train_data")
