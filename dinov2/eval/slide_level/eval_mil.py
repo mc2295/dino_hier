@@ -1,3 +1,6 @@
+from time import time
+
+start = time()
 import argparse
 import os
 import random
@@ -6,331 +9,42 @@ from typing import Any, Dict, List, Optional, Union
 
 import h5py
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from models.aggregators import *
-from sklearn.metrics import (balanced_accuracy_score,
-                             precision_recall_fscore_support)
-from sklearn.model_selection import (KFold, StratifiedShuffleSplit,
-                                     train_test_split)
+import wandb
+import yaml
+from PIL import Image
+from sklearn.metrics import balanced_accuracy_score, cohen_kappa_score, accuracy_score, classification_report, log_loss, roc_auc_score
+from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader, Dataset, Subset
+from tqdm import tqdm
 
-import wandb
+import dinov2.eval.slide_level.models.aggregators as models
 from dinov2.eval.patch_level.dataset import PathImageDataset
 from dinov2.eval.patch_level.general_patch_eval import save_features_and_labels
 from dinov2.eval.patch_level.models.return_model import (get_models,
                                                          get_transforms)
 
+done = time()
+print("imports done in", np.round(done-start), "s")
 
-class MILFeatureDataset(Dataset):
-    def __init__(self, data_path):
-        self.data_path = data_path
-        self.features_dict = {}
-
-        # Loop over classes
-        clses = os.listdir(data_path)
-        self.class_to_idx = {cls: idx for idx, cls in enumerate(clses)}
-
-        for cls in clses:
-            cls_path = os.path.join(data_path, cls)
-            self.features_dict[cls] = {}
-            patients = os.listdir(cls_path)
-
-            # Loop over patients in each class
-            for patient in patients:
-                patient_path = os.path.join(cls_path, patient)
-                cells = os.listdir(patient_path)
-
-                # Initialize an empty list to store features for the patient
-                self.features_dict[cls][patient] = []
-
-                for cell in cells:
-                    if cell.lower().endswith('.h5'):
-                        cell_path = os.path.join(patient_path, cell)
-                        with h5py.File(cell_path, 'r') as hf:
-                            feature = np.array(hf['features'])  # Assume 'features' is the dataset name in the .h5 file
-                            self.features_dict[cls][patient].append(feature)
-
-        # Flatten the dictionary to a list of samples for easy access during __getitem__
-        self.samples = []
-        for cls, patients in self.features_dict.items():
-            cls_idx = self.class_to_idx[cls]
-            for patient, features in patients.items():
-                if features:  # Ensure there are features to add
-                    # Stack features and store along with class label
-                    self.samples.append((np.stack(features), cls_idx))
-        print("data_loading done!")
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, idx):
-        features, cls = self.samples[idx]
-        # print(cls)
-        features_tensor = torch.tensor(features, dtype=torch.float)
-        cls_tensor = torch.tensor(cls, dtype=torch.long)  # Adjust dtype as necessary
-        return features_tensor, cls_tensor
-
-
-class wbc_mil(nn.Module):
-
-    def __init__(self, class_count, multi_attention, latent_dim) -> None:
-        super(wbc_mil, self).__init__()
-
-        
-        self.attention_latent_dim = 128
-        self.class_count = class_count
-        self.multi_attention = multi_attention
-        # self.latent_dim = latent_dim
-        # self.mil_latent_dim = 500
-        self.mil_latent_dim = latent_dim
-
-        # # MIL encoder
-        # self.mil_encoder = nn.Sequential(
-        #     nn.Conv1d(in_channels=self.latent_dim, out_channels=int(self.latent_dim * 1.5), kernel_size=3, padding=1),
-        #     nn.ReLU(),
-        #     nn.Conv1d(in_channels=int(self.latent_dim * 1.5), out_channels=int(self.latent_dim * 2), kernel_size=3, padding=1),
-        #     nn.ReLU(),
-        #     nn.AdaptiveMaxPool1d(output_size=1),
-        #     nn.Flatten(),
-        #     nn.Linear(int(self.latent_dim * 2), self.mil_latent_dim),
-        #     nn.ReLU(),
-        # )
-        
-        # single attention network
-        self.attention = nn.Sequential(
-            nn.Linear(self.mil_latent_dim, self.attention_latent_dim),
-            nn.Tanh(),
-            nn.Linear(self.attention_latent_dim, 1)
-        )
-
-        # multi attention network
-        self.attention_multi_column = nn.Sequential(
-            nn.Linear(self.mil_latent_dim, self.attention_latent_dim),
-            nn.Tanh(),
-            nn.Linear(self.attention_latent_dim, self.class_count),
-        )
-
-        # single head classifier
-        self.classifier = nn.Sequential(
-            nn.Linear(self.mil_latent_dim, 64),
-            nn.ReLU(),
-            nn.Linear(64, self.class_count)
-        )
-
-        # multi head classifier
-        self.classifier_multi_column = nn.ModuleList()
-        for a in range(self.class_count):
-            self.classifier_multi_column.append(nn.Sequential(
-                nn.Linear(self.mil_latent_dim, 64),
-                nn.ReLU(),
-                nn.Linear(64, 1)
-            ))
-
-    def forward(self, x):
-
-        prediction = []
-        bag_feature_stack = []
-
-        # features = self.mil_encoder(x.squeeze().unsqueeze(dim=2))
-        features = x
-        attention = torch.transpose(self.attention_multi_column(features), 1, 0)
-        
-        if self.multi_attention:
-            for cls in range(self.class_count):
-                # multi head aggregation
-                att_softmax = F.softmax(attention.T[cls,...]) # F.softmax(attention[cls,...])
-                bag_features = torch.mm(att_softmax, features.squeeze()) # torch.mm(att_softmax.unsqueeze(dim=0), features.squeeze())
-                bag_feature_stack.append(bag_features)
-                
-                # classification
-                pred = self.classifier_multi_column[cls](bag_features)
-                prediction.append(pred)
-                    
-            prediction = torch.stack(prediction).view(1, self.class_count)
-            bag_feature_stack = torch.stack(bag_feature_stack).squeeze()
-
-            return {"prediction": prediction, "attention": attention, "att_softmax": att_softmax, "bag_features": bag_features}
-        
-        else:
-            # single head aggregation
-            att_softmax = F.softmax(attention, dim=1)
-            bag_features = torch.mm(att_softmax, features)
-            
-            # classification
-            prediction = self.classifier(bag_features)
-            
-            return {"prediction": prediction, "attention": attention, "att_softmax": att_softmax, "bag_features": bag_features}
-
-
-class EarlyStopping:
-    def __init__(self, patience=20, min_delta=0):
-        """
-        Args:
-            patience (int): How many epochs to wait after last time validation loss improved.
-                            Default: 5
-            min_delta (float): Minimum change in the monitored quantity to qualify as an improvement.
-                               Default: 0
-        """
-        self.patience = patience
-        self.min_delta = min_delta
-        self.counter = 0
-        self.best_loss = np.Inf
-        self.early_stop = False
-
-    def __call__(self, val_loss):
-        if self.best_loss - val_loss > self.min_delta:
-            self.best_loss = val_loss
-            self.counter = 0
-        else:
-            self.counter += 1
-            # print(f"EarlyStopping counter: {self.counter} out of {self.patience}")
-            if self.counter >= self.patience:
-                self.early_stop = True
-
-
-class RunMIL:
-    def __init__(self, 
-                 device, 
-                 num_epochs,
-                 dataset_train_val, dataset_test, batch_size,
-                 class_count, multi_attention,latent_dim):
-        
-        self.dataset_train_val = dataset_train_val
-        self.dataset_test = dataset_test
-        self.batch_size = batch_size
-        self.latent_dim=latent_dim
-
-        self.num_classes = class_count
-
-        self.criterion = nn.CrossEntropyLoss()
-        self.device = device
-        self.num_epochs = num_epochs
-
-        self.test_loader = DataLoader(dataset_test, batch_size=1)
-
-
-
-    def forward(self):
-
-        test_accuracies = []
-        test_f1s = []
-
-        for fold, (train_idx, val_idx) in enumerate(self.kfold_train_val.split(self.dataset_train_val)):
-            print(f"Fold {fold + 1}")
-            train_subs = Subset(self.dataset_train_val, train_idx)
-            val_subs = Subset(self.dataset_train_val, val_idx)
-            
-            train_loader = DataLoader(train_subs, batch_size=1, shuffle=True)
-            val_loader = DataLoader(val_subs, batch_size=1)
-
-            input_ex, _ = dataset_train_val[0]
-            latent_dim = input_ex.shape[1]
-
-            # self.model = wbc_mil(class_count=self.class_count, multi_attention=self.multi_attention, latent_dim=self.latent_dim)
-            self.model = ABMIL(num_classes=self.num_classes, input_dim=self.latent_dim)
-
-            self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=0.001, momentum=0.9, nesterov=True)
-            self.scheduler = CosineAnnealingLR(self.optimizer, T_max=num_epochs)
-            
-            best_model = self.train_fold(fold, train_loader, val_loader)
-
-            # Test the best model from this fold
-            self.model.load_state_dict(best_model)
-            self.model.eval()
-
-            _, test_accuracy, test_f1 = self.run_epoch(self.test_loader, phase="test", batch_size=1, epoch=1)
-            test_accuracies.append(test_accuracy)
-            test_f1s.append(test_f1)
-            print(f"Fold {fold + 1} Test Accuracy: {test_accuracy:.4f} Test F1: {test_f1:.4f}")
-
-        return best_model, test_accuracies, test_f1s
-
-    def train_fold(self, fold, train_loader, val_loader):
-        self.model.to(self.device)
-        best_loss = float('inf')
-
-        early_stopping = EarlyStopping(patience=20, min_delta=0.0)
-
-        for epoch in range(self.num_epochs):
-
-            train_loss, train_accuracy, train_f1 = self.run_epoch(loader=train_loader, phase="train", batch_size=self.batch_size, epoch=epoch)
-            print("fold ", fold, "epoch ", epoch, " > train loss: ", train_loss, ", train accuracy: ", train_accuracy)
-            val_loss, val_accuracy, val_f1 = self.run_epoch(loader=val_loader, phase="val", batch_size=1, epoch=epoch)
-            print("fold ", fold, "epoch ", epoch, " > val loss: ", val_loss, ", val accuracy: ", val_accuracy, "val_f1", val_f1)
-
-            if val_loss < best_loss:
-                best_loss = val_loss    
-                best_model = self.model.state_dict()
-
-            early_stopping(val_loss)
-            if early_stopping.early_stop:
-                print("Early stopping triggered.")
-                break
-
-        return best_model
-
-    def run_epoch(self, loader, phase, epoch, batch_size=1):
-        if phase == 'train':
-            self.model.train()
-        else:
-            self.model.eval()
-
-        total_loss = 0.0
-        all_preds = []
-        all_labels = []
-        
-        for counter, (features, cls) in enumerate(loader):
-            features, labels = features.to(device), cls.to(device)
-
-            if phase=="train":
-                self.optimizer.zero_grad()
-
-            outputs = self.model(features)
-            loss = self.criterion(outputs["prediction"], labels)
-            
-            if phase=="train":
-                loss.backward()
-            total_loss += loss.item()
-
-            if phase=="train" and ((counter+1)%batch_size==0 or (counter+1)==len(loader)):
-                self.optimizer.step()
-                self.scheduler.step()
-
-            # wandb.log({f"{phase}_loss": loss.item(), "epoch": epoch})
-
-            _, preds = torch.max(outputs["prediction"], 1)
-            all_preds.extend(preds.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
-
-            # Calculate metrics
-            balanced_acc = balanced_accuracy_score(all_labels, all_preds)
-            _, _, f1_weighted, _ = precision_recall_fscore_support(all_labels, all_preds, average='weighted')
-    
-        avg_loss = total_loss / len(loader)
-
-        # Log epoch metrics
-        # wandb.log({
-        #     f"{phase}_avg_loss": total_loss / len(loader), 
-        #     f"{phase}_balanced_accuracy": balanced_acc, 
-        #     f"{phase}_f1_weighted": f1_weighted, 
-        #     "epoch": epoch
-        # })
-
-        return avg_loss, balanced_acc, f1_weighted
-
+"""
+run with 
+python ./dinov2/eval/slide_level/eval_mil.py --checkpoint /lustre/groups/shared/users/peng_marr/DinoBloomv2/vits_supcon_no_koleo/eval/training_99999/ --model_path /lustre/groups/shared/users/peng_marr/DinoBloomv2/vits_supcon_no_koleo/eval/training_99999/
+"""
 
 def get_eval_metrics(
-    targets_all: Union[List[int], np.ndarray],
-    preds_all: Union[List[int], np.ndarray],
-    probs_all: Optional[Union[List[float], np.ndarray]] = None,
-    get_report: bool = True,
-    prefix: str = "",
-    roc_kwargs: Dict[str, Any] = {},
-) -> Dict[str, Any]:
+        targets_all: Union[List[int], np.ndarray],
+        preds_all: Union[List[int], np.ndarray],
+        probs_all: Optional[Union[List[float], np.ndarray]] = None,
+        get_report: bool = False,
+        prefix: str = "",
+        roc_kwargs: Dict[str, Any] = {},
+    ) -> Dict[str, Any]:
     """
     Calculate evaluation metrics and return the evaluation metrics.
 
@@ -376,8 +90,8 @@ def get_eval_metrics(
 
 
 def train_evaluate_mil(
-        train_data, test_data, num_classes,
-        num_epochs = 20, random_state=0, dropout=0.25, n_heads=1, prefix="", wandb=False
+        train_data, val_data, test_data, num_classes,
+        num_epochs = 20, random_state=0, dropout=0.25, n_heads=1, prefix="", wandb=False, arch="ABMIL"
     ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(random_state)
@@ -399,16 +113,17 @@ def train_evaluate_mil(
 
     # Initialize the model, loss function and optimizer
     in_dim = train_data[0][0].shape[-1]
-    model = models.__dict__[cfg.arch](input_dim=in_dim, num_classes=num_classes)
+    model = models.__dict__[arch](input_dim=in_dim, num_classes=num_classes)
     model = model.to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=0.0001, weight_decay=1.0e-05)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
 
     # Train the model
-    for epoch in tqdm(range(num_epochs), desc=f"Training {cfg.arch}"):
+    best_val_loss, best_model_weights = 1000, None
+    for epoch in tqdm(range(num_epochs), desc=f"Training {arch}"):
         model.train()
-        for inputs, labels in tqdm(train_loader):
+        for inputs, labels in train_loader:
             outputs = model(inputs.to(device))
             loss = criterion(outputs, labels.to(device))
             
@@ -417,9 +132,20 @@ def train_evaluate_mil(
             optimizer.step()
         scheduler.step()
 
+        # Validate the model
+        model.eval()
+        with torch.no_grad():
+            for inputs, labels in val_loader:
+                outputs = model(inputs.to(device))
+                val_loss = criterion(outputs, labels.to(device))
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    best_model_weights = model.state_dict()      
+
         tqdm.write(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}, Validation Loss: {val_loss:.4f}')
         
     # Test the model
+    model.load_state_dict(best_model_weights)
     model.eval()
     with torch.no_grad():
         test_preds_list, test_probs_list, test_labels_list = [], [], []
@@ -444,13 +170,150 @@ def train_evaluate_mil(
     return get_eval_metrics(test_labels, test_preds, test_probs, roc_kwargs=roc_kwargs, prefix=prefix)
 
 
+def save_features_and_labels(feature_extractor, transform, data_dir, save_dir, ext='.jpg'):
+
+    print("extracting features and saving to", save_dir)
+    os.makedirs(save_dir, exist_ok=True, mode=0o777)
+    os.chmod(save_dir, 0o777)
+
+    # check if features have already been extracted
+    images = list(Path(data_dir).rglob(f'**/*{ext}'))
+    # remove ipynb_checkpoints
+    images = [img for img in images if 'ipynb_checkpoints' not in str(img)]
+    features = list(Path(save_dir).rglob('*.h5'))
+    if len(images) == len(features):
+        print("features already extracted at", save_dir)
+        return
+
+    # create dataset from list 
+    class ListDataset(Dataset):
+        def __init__(self, data, transform=None):
+            self.data = data
+            self.transform = transform
+
+            # load task configs
+            with open(f'dinov2/eval/slide_level/task_configs.yaml', 'r') as f:
+                task_configs = yaml.safe_load(f)
+            self.dataset = args.dataset
+            self.labels = pd.read_csv(task_configs[self.dataset]['csv']) if self.dataset == 'APL_AML_all' else None
+            self.label_dict = task_configs[args.dataset]['label_dict']
+
+        def __len__(self):
+            return len(self.data)
+
+        def __getitem__(self, idx):
+            img = Image.open(self.data[idx]).convert('RGB')
+            if self.transform:
+                img = self.transform(img)
+            
+            label = self.get_labels(self.data[idx])
+
+            return img, label, str(self.data[idx])
+        
+        def get_labels(self, path):
+            if self.dataset == 'APL_AML_all':
+                patient = path.replace(data_dir, '').split('/')[1]
+                label = self.labels[self.labels['Patient_ID'] == patient]['Diagnosis']
+                label = self.label_dict[label.values[0]]
+            elif self.dataset == 'AML_Hehr':
+                label = self.label_dict[Path(path).parent.parent.name]
+            else: 
+                raise NotImplementedError(f"Dataset {self.dataset} not implemented")
+            
+            return label
+
+    dataset = ListDataset(images, transform)
+    dataloader = DataLoader(dataset, batch_size=64, num_workers=4)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    embeddings_list, labels_list = {}, {}
+    with torch.no_grad():
+        feature_extractor.eval()
+        for images, labels, file_names in tqdm(dataloader):
+            images = images.to(device)
+            batch_features = feature_extractor(images)
+
+            parent_names = [Path(fn).parent for fn in file_names]
+
+            h5_filenames = [str(fn).replace(data_dir, str(save_dir)+'/') + '.h5' for fn in parent_names]
+            
+            for h5_filename, label, batch_feature in zip(h5_filenames, labels, batch_features):
+                if h5_filename not in embeddings_list.keys():
+                    embeddings_list[h5_filename] = []
+                    labels_list[h5_filename] = label
+                embeddings_list[h5_filename].append(batch_feature.cpu().numpy())
+                assert labels_list[h5_filename] == label, "labels are not the same for the same patient"
+    
+    for h5_filename, embeddings in embeddings_list.items():
+        embeddings = np.stack(embeddings)
+        label = labels_list[h5_filename]
+        save_h5(h5_filename, embeddings, label)
+
+
+def save_h5(h5_filename, embeddings, label):
+    Path(h5_filename).parent.mkdir(parents=True, exist_ok=True)
+    with h5py.File(h5_filename, "w") as hf:
+        hf.create_dataset("features", data=embeddings)
+        hf.create_dataset("labels", data=label)
+
+
+def eval_task(dataset, feature_dir, folds):
+    # load task configs
+    with open(f'dinov2/eval/slide_level/task_configs.yaml', 'r') as f:
+        task_configs = yaml.safe_load(f)
+    
+    class H5Dataset(Dataset):
+        def __init__(self, root):
+            self.data = list(Path(root).rglob('**/*.h5'))
+
+            # print('Loading labels ...')
+            # self.labels = [h5_file.parent.parent.name for h5_file in self.data]
+
+        def __len__(self):
+            return len(self.data)
+
+        def __getitem__(self, idx):
+            with h5py.File(self.data[idx], 'r') as hf:
+                features = hf['features'][()]
+                label = hf['labels'][()]
+
+            return features, label
+
+    if dataset == 'AML_Hehr':
+        # 5-fold cross val on training data
+        train_val_dataset = H5Dataset(Path(feature_dir) / 'train')
+        train_val_labels = [path.parent.name for path in train_val_dataset.data]
+        test_dataset = H5Dataset(Path(feature_dir) / 'test')
+
+        splits = StratifiedKFold(n_splits=folds, shuffle=True, random_state=0)
+        results = []
+        for fold, (train_idx, val_idx) in enumerate(splits.split(train_val_dataset, train_val_labels)):
+            train_dataset = Subset(train_val_dataset, train_idx)
+            val_dataset = Subset(train_val_dataset, val_idx)
+
+            res = train_evaluate_mil(train_dataset, val_dataset, test_dataset, num_classes)
+            results.append(res)
+        
+        print("====================================")
+        print(f'Final results averaged over {folds} folds for {dataset}')
+        results_mean = {key: np.mean([result[key] for result in results]) for key in results[0].keys()}
+        results_std = {key: np.std([result[key] for result in results]) for key in results[0].keys()}
+        for keys, values in results_mean.items():
+            print(f"{keys.split('/')[-1]: <12}: {np.round(values, 4):.4f} ± {np.round(results_std[keys], 4):.4f}")
+
+    else:  
+        raise NotImplementedError(f"Dataset {dataset} not implemented")
+
+    return results
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train a WBC MIL model.')
-    # parser.add_argument('--data_path', 
-    #                     type=str, 
-    #                     required=True, 
-    #                     help='Path to the training data directory',
-    #                     default='dinov2_vits_orig')
+    parser.add_argument('--dataset', 
+                        type=str, 
+                        help='name of the dataset for evaluation',
+                        default='AML_Hehr')
     # parser.add_argument('--checkpoint', 
     #                     type=str, 
     #                     help='checkpoint to evaluate')   
@@ -461,31 +324,19 @@ if __name__ == "__main__":
         type=int,
     )
     parser.add_argument(
-        "--filetype",
-        help="name of filending",
-        default=".jpg",
-        type=str,
-    )
-    parser.add_argument(
         "--batch_size",
         default=64,
-        type=int,
-    )
-    parser.add_argument(
-        "--num_workers",
-        help="num workers to load data",
-        default=16,
         type=int,
     )
                         
 
     args = parser.parse_args()
 
-    args.checkpoint = '/lustre/groups/shared/users/peng_marr/DinoBloomv2/vits_supcon_no_koleo/eval/training_99999/'
-    args.model_path = '/lustre/groups/shared/users/peng_marr/DinoBloomv2/vits_supcon_no_koleo/eval/training_99999/'
-    checkpoint_root = Path(args.checkpoint).parent.parent
+    args.checkpoint = '/lustre/groups/shared/users/peng_marr/DinoBloomv2/DinoBloom_models/DinoBloom-S.pth'
+    checkpoint_root = Path('/lustre/groups/shared/users/peng_marr/DinoBloomv2/DinoBloom_models/DinoBloom-S') # Path(args.checkpoint).parent.parent
     model_name = 'dinov2_vits14'
     dataset = 'AML_Hehr'
+    folds = 5
     wandb.init(project="histo-collab", entity="DinoBloomv2-MIL-eval", name=checkpoint_root.name+'_'+dataset, mode='disabled') 
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -496,49 +347,52 @@ if __name__ == "__main__":
     batch_size = 1
 
     # extract embeddings
-    feature_dir = checkpoint_root / 'features'
+    feature_dir = checkpoint_root / 'features' / dataset
     feature_dir.mkdir(exist_ok=True, parents=True, mode=0o777)
-    data_root = '/lustre/groups/labs/marr/qscd01/datasets/210526_mll_mil_pseudonymized/splitted_data/'
 
     # Load the model
     if model_name in ["owkin","resnet50","resnet50_full","remedis","imagebind"]:
         sorted_paths=[None]
     elif model_name in ["retccl","ctranspath"]:
-        sorted_paths=[Path(args.model_path)]
+        sorted_paths=[Path(args.checkpoint)]
+    elif Path(args.checkpoint).is_file():
+        sorted_paths = [Path(args.checkpoint)]
     else:
-        sorted_paths = list(Path(args.model_path).rglob("*teacher_checkpoint.pth"))
+        sorted_paths = list(Path(args.checkpoint).rglob("*teacher_checkpoint.pth"))
+
+    # load task configs
+    with open(f'dinov2/eval/slide_level/task_configs.yaml', 'r') as f:
+        task_configs = yaml.safe_load(f)
 
     for checkpoint in sorted_paths:
         feature_extractor = get_models(model_name, args.img_size, saved_model_path=checkpoint)
         transform = get_transforms(model_name, args.img_size)
 
-        dataset = PathImageDataset(data_root, transform=transform, filetype=args.filetype, img_size=(args.img_size,args.img_size))
-        dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
-
-        save_features_and_labels(feature_extractor, dataloader, feature_dir, len(dataset))
+        save_features_and_labels(feature_extractor, transform, task_configs[args.dataset]['root'], feature_dir, ext=task_configs[dataset]['ext'])
 
         if len(sorted_paths)>1:
             sorted_paths = sorted(sorted_paths, key=sort_key)
-        if args.evaluate_untrained_baseline:
-            sorted_paths.insert(0, None)
 
-        root_features_path = '/lustre/groups/labs/marr/qscd01/datasets/210526_mll_mil_pseudonymized/splitted_extracted_features/'
-        data_path_train = os.path.join(root_features_path, args.data_path, 'test')
-        data_path_test = os.path.join(root_features_path, args.data_path, 'test')
+        results = eval_task(dataset, feature_dir, folds=folds)
 
-        # Initialize dataset and dataloader
-        dataset_train_val = MILFeatureDataset(data_path_train)
-        datset_test = MILFeatureDataset(data_path_test)
+        results_mean = {key: np.mean([result[key] for result in results]) for key in results[0].keys()}
+        results_std = {key: np.std([result[key] for result in results]) for key in results[0].keys()}
 
-        input_ex, _ = dataset_train_val[0]
-        latent_dim = input_ex.shape[1]
+        wandb.log(results_mean)
+        print("====================================")
+        print(f'Final results averaged over {folds} folds for {dataset}')
+        for keys, values in results_mean.items():
+            print(f"{keys.split('/')[-1]: <12}: {np.round(values, 4):.4f} ± {np.round(results_std[keys], 4):.4f}")
         
-        results = train_evaluate_mil(dataset_train_val, datset_test, num_classes, random_state=run, dropout=0.25, n_heads=1, prefix="", wandb=True)
-
-        wandb.log(results)
-
-        for key, value in results.items():
-            print(f"{key.split('/')[-1]: <12}: {np.round(value, 4):.4f}")
+    #     task = list(results_mean.keys())[0].split("/")[0]
+    #     results[task] = {}
+    #     for key, value in results_mean.items():
+    #         metric = key.split("/")[-1]
+    #         results[task][f"{metric}_mean"] = value
+    #         results[task][f"{metric}_std"] = results_std[key]
+    
+    # pd.DataFrame(results).to_csv(f"{cfg.base_dir}/results_{cfg.arch}.csv")
+    # print(f"results saved to {cfg.base_dir}/results_{cfg.arch}.csv")
 
 
     
