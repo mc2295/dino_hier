@@ -577,7 +577,10 @@ class SSLMetaArch(nn.Module):
             cls_output = self.student["supervised_head_0"](student_cls_tokens[mask])
             supervised_loss = 0
             for loss in self.supervised_losses[0]:
-                supervised_loss += self.supervised_loss_weight * loss(cls_output, images["labels"].to(cls_output.device)[mask])
+                if isinstance(loss, losses.SupConLoss):
+                    supervised_loss += self.supervised_loss_weight * loss(student_cls_tokens[mask], images["labels"].to(cls_output.device)[mask])
+                else:
+                    supervised_loss += self.supervised_loss_weight * loss(cls_output, images["labels"].to(cls_output.device)[mask])
                 loss_accumulator += supervised_loss
                 loss_dict[str(loss.__class__).split(".")[-1].replace("'>","")] = supervised_loss / loss_scales
     
