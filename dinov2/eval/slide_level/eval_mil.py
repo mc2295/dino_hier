@@ -170,18 +170,14 @@ def train_evaluate_mil(
     return get_eval_metrics(test_labels, test_preds, test_probs, roc_kwargs=roc_kwargs, prefix=prefix)
 
 
-def save_features_and_labels(feature_extractor, transform, data_dir, save_dir, ext='.jpg'):
+def save_features_and_labels(feature_extractor, transform, data_dir, save_dir, num_samples, ext='.jpg'):
 
     print("extracting features and saving to", save_dir)
     os.makedirs(save_dir, exist_ok=True, mode=0o777)
     os.chmod(save_dir, 0o777)
 
-    # check if features have already been extracted
-    images = list(Path(data_dir).rglob(f'**/*{ext}'))
-    # remove ipynb_checkpoints
-    images = [img for img in images if 'ipynb_checkpoints' not in str(img)]
     features = list(Path(save_dir).rglob('*.h5'))
-    if len(images) == len(features):
+    if len(features) == num_samples:
         print("features already extracted at", save_dir)
         return
 
@@ -221,6 +217,10 @@ def save_features_and_labels(feature_extractor, transform, data_dir, save_dir, e
                 raise NotImplementedError(f"Dataset {self.dataset} not implemented")
             
             return label
+
+    # get all images for features extraction
+    images = list(Path(data_dir).rglob(f'**/*{ext}'))
+    images = [img for img in images if 'ipynb_checkpoints' not in str(img)]
 
     dataset = ListDataset(images, transform)
     dataloader = DataLoader(dataset, batch_size=64, num_workers=4)
@@ -314,9 +314,11 @@ if __name__ == "__main__":
                         type=str, 
                         help='name of the dataset for evaluation',
                         default='AML_Hehr')
-    # parser.add_argument('--checkpoint', 
-    #                     type=str, 
-    #                     help='checkpoint to evaluate')   
+    parser.add_argument('--checkpoint', 
+                        type=str, default=None,
+                        help='checkpoint to evaluate')  
+    parser.add_argument('--checkpoint_root', type=str, default=None) 
+    parser.add_argument('--model_name', type=str, default='dinov2_vits14')
     parser.add_argument(
         "--img_size",
         help="size of image to be used",
@@ -328,17 +330,21 @@ if __name__ == "__main__":
         default=64,
         type=int,
     )
-                        
+
+
 
     args = parser.parse_args()
 
-    args.checkpoint = '/lustre/groups/shared/users/peng_marr/DinoBloomv2/DinoBloom_models/DinoBloom-S.pth'
-    checkpoint_root = Path('/lustre/groups/shared/users/peng_marr/DinoBloomv2/DinoBloom_models/DinoBloom-S') # Path(args.checkpoint).parent.parent
-    model_name = 'dinov2_vits14'
+    checkpoint_root = Path(args.checkpoint).parent.parent if args.checkpoint_root is None else Path(args.checkpoint_root)
+    # args.checkpoint = '/lustre/groups/shared/users/peng_marr/DinoBloomv2/DinoBloom_models/DinoBloom-S.pth'
+    # checkpoint_root = Path('/lustre/groups/shared/users/peng_marr/DinoBloomv2/DinoBloom_models/DinoBloom-S') # Path(args.checkpoint).parent.parent
     dataset = 'AML_Hehr'
     folds = 5
     wandb.init(project="histo-collab", entity="DinoBloomv2-MIL-eval", name=checkpoint_root.name+'_'+dataset, mode='disabled') 
     
+    # add tasks configs
+    args.num_samples = 242  # for AML_Hehr
+
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     num_epochs = 20
@@ -351,9 +357,9 @@ if __name__ == "__main__":
     feature_dir.mkdir(exist_ok=True, parents=True, mode=0o777)
 
     # Load the model
-    if model_name in ["owkin","resnet50","resnet50_full","remedis","imagebind"]:
+    if args.model_name in ["owkin","resnet50","resnet50_full","remedis","imagebind"]:
         sorted_paths=[None]
-    elif model_name in ["retccl","ctranspath"]:
+    elif args.model_name in ["retccl","ctranspath"]:
         sorted_paths=[Path(args.checkpoint)]
     elif Path(args.checkpoint).is_file():
         sorted_paths = [Path(args.checkpoint)]
@@ -365,10 +371,10 @@ if __name__ == "__main__":
         task_configs = yaml.safe_load(f)
 
     for checkpoint in sorted_paths:
-        feature_extractor = get_models(model_name, args.img_size, saved_model_path=checkpoint)
-        transform = get_transforms(model_name, args.img_size)
+        feature_extractor = get_models(args.model_name, args.img_size, saved_model_path=checkpoint)
+        transform = get_transforms(args.model_name, args.img_size)
 
-        save_features_and_labels(feature_extractor, transform, task_configs[args.dataset]['root'], feature_dir, ext=task_configs[dataset]['ext'])
+        save_features_and_labels(feature_extractor, transform, task_configs[args.dataset]['root'], feature_dir, args.num_samples, ext=task_configs[dataset]['ext'])
 
         if len(sorted_paths)>1:
             sorted_paths = sorted(sorted_paths, key=sort_key)
@@ -383,16 +389,19 @@ if __name__ == "__main__":
         print(f'Final results averaged over {folds} folds for {dataset}')
         for keys, values in results_mean.items():
             print(f"{keys.split('/')[-1]: <12}: {np.round(values, 4):.4f} ± {np.round(results_std[keys], 4):.4f}")
-        
-    #     task = list(results_mean.keys())[0].split("/")[0]
-    #     results[task] = {}
-    #     for key, value in results_mean.items():
-    #         metric = key.split("/")[-1]
-    #         results[task][f"{metric}_mean"] = value
-    #         results[task][f"{metric}_std"] = results_std[key]
-    
-    # pd.DataFrame(results).to_csv(f"{cfg.base_dir}/results_{cfg.arch}.csv")
-    # print(f"results saved to {cfg.base_dir}/results_{cfg.arch}.csv")
+
+        # add mean and std dev to results dataframe
+        for k in range(len(results)):
+            results[k]['fold'] = k
+        results_mean['fold'] = 'mean'
+        results_std['fold'] = 'std'
+
+        results.append(results_mean)
+        results.append(results_std)
+
+
+        pd.DataFrame(results).to_csv(f"{args.checkpoint_root}/results_ABMIL_{args.dataset}_{args.model_name}.csv")
+        print(f"results saved to {args.checkpoint_root}/results_ABMIL_{args.dataset}_{args.model_name}.csv")
 
 
     
