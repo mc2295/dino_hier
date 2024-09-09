@@ -32,3 +32,4 @@ eval_acevedo.sh
 eval_external.sh
 *.jpeg
 *.jpg
+**.csv
