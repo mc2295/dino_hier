@@ -1,3 +1,6 @@
+import os 
+
+import timm
 import torch
 import torch.nn as nn
 from dinov2.eval.patch_level.models.ctran import ctranspath
@@ -36,6 +39,10 @@ def get_models(modelname, image_size, saved_model_path=None):
         model = get_retCCL(saved_model_path)
     elif modelname.lower() == "owkin":
         model = Phikon()
+    elif modelname.lower() == "uni":
+        model = get_uni(saved_model_path)
+    elif modelname.lower() == "conch":
+        model= get_conch(saved_model_path)
 
     # --- vision foundation models 
     elif modelname.lower() == "resnet50":
@@ -151,6 +158,16 @@ def get_vim_finetuned(checkpoint=None):
     model = get_vision_mamba_model(checkpoint=checkpoint)
     return model
 
+def get_uni(saved_model_path):
+    model = timm.create_model("vit_large_patch16_224", img_size=224, patch_size=16, init_values=1e-5, num_classes=0, dynamic_img_size=True)
+    model.load_state_dict(torch.load(os.path.join(saved_model_path, "pytorch_model.bin"), map_location="cpu"), strict=True)
+    return model
+
+def get_conch(model_path):
+    from conch.open_clip_custom import create_model_from_pretrained 
+    model, _ = create_model_from_pretrained("conch_ViT-B-16", checkpoint_path=os.path.join(model_path, "pytorch_model.bin"))
+    return model
+
 
 
 
@@ -182,6 +199,7 @@ def get_dino_finetuned_downloaded(model_path, modelname,image_size):
         model.pos_embed = pos_embed
         # load state dict
         model.load_state_dict(new_state_dict, strict=True)
+        
     return model
 
 
@@ -234,12 +252,12 @@ def multiply_by_255(img):
     return img * 255
 
 
-def get_transforms(model_name,image_size=224):
+def get_transforms(model_name,image_size=224, saved_model_path=None):
     # from imagenet, leave as is
     mean = (0.485, 0.456, 0.406)
     std = (0.229, 0.224, 0.225)
 
-    if model_name.lower() in ["ctranspath", "resnet50", "simclr_lung", "beit_fb", "resnet50_full"]:
+    if model_name.lower() in ["ctranspath", "resnet50", "simclr_lung", "beit_fb", "resnet50_full", "uni", "conch"]:
         size = 224
     elif model_name.lower() == "owkin":
         image_processor = AutoImageProcessor.from_pretrained("owkin/phikon")
@@ -301,8 +319,12 @@ def get_transforms(model_name,image_size=224):
             transforms.Lambda(multiply_by_255),
             transforms.Normalize(mean=mean, std=std),
         ]
-
     preprocess_transforms = transforms.Compose(transforms_list)
+
+    if model_name.lower() == "conch":
+        from conch.open_clip_custom import create_model_from_pretrained 
+        _ , preprocess_transforms = create_model_from_pretrained("conch_ViT-B-16", checkpoint_path=os.path.join(saved_model_path,"pytorch_model.bin"))
+
     return preprocess_transforms
 
 
