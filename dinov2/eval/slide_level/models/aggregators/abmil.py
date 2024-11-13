@@ -40,14 +40,21 @@ class ABMIL(BaseAggregator):
         self.size_dict = {"small": [input_dim, 256, 256], "big": [input_dim, 512, 384]}
 
         ### Deep Sets Architecture Construction
+        # --- no fc setting ---
         size = self.size_dict[size_arg]
-        # fc = [nn.Linear(size[0], size[1]), nn.ReLU(), nn.Dropout(dropout)]
         fc = []
         attention_net = Attn_Net_Gated(L=size[0], D=size[2], dropout=dropout, n_classes=1)
         fc.append(attention_net)
         self.attention_net = nn.Sequential(*fc)
-        # self.rho = nn.Sequential(*[nn.Linear(size[1], size[2]), nn.ReLU(), nn.Dropout(dropout)])
         self.rho = nn.Sequential(*[nn.Linear(size[0], size[2]), nn.ReLU(), nn.Dropout(dropout)])
+
+        # --- default setting ---
+        # size = self.size_dict[size_arg]
+        # fc = [nn.Linear(size[0], size[1]), nn.ReLU(), nn.Dropout(dropout)]
+        # attention_net = Attn_Net_Gated(L=size[1], D=size[2], dropout=dropout, n_classes=1)
+        # fc.append(attention_net)
+        # self.attention_net = nn.Sequential(*fc)
+        # self.rho = nn.Sequential(*[nn.Linear(size[1], size[2]), nn.ReLU(), nn.Dropout(dropout)])
 
         self.input_dim = input_dim
         self.classifier = nn.Linear(size[2]*n_heads, num_classes)
