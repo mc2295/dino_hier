@@ -5,5 +5,6 @@ from .perceiver import *
 from .transformer import *
 from .transmil import *
 from .abmil import *
+from .wbcmil import *
 
 from .model_utils import *

@@ -33,7 +33,7 @@ done = time()
 print("imports done in", np.round(done-start), "s")
 
 """
-run with 
+run with e.g.
 python ./dinov2/eval/slide_level/eval_mil.py --checkpoint /lustre/groups/shared/users/peng_marr/DinoBloomv2/vits_supcon_no_koleo/eval/training_99999/ --model_path /lustre/groups/shared/users/peng_marr/DinoBloomv2/vits_supcon_no_koleo/eval/training_99999/
 """
 
@@ -91,7 +91,7 @@ def get_eval_metrics(
 
 def train_evaluate_mil(
         train_data, val_data, test_data, num_classes,
-        num_epochs = 20, random_state=0, dropout=0.25, n_heads=1, prefix="", wandb=False, arch="ABMIL"
+        num_epochs = 150, random_state=0, dropout=0.25, n_heads=1, prefix="", wandb=False, arch="ABMIL"
     ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(random_state)
@@ -121,7 +121,8 @@ def train_evaluate_mil(
 
     # Train the model
     best_val_loss, best_model_weights = 1000, None
-    for epoch in tqdm(range(num_epochs), desc=f"Training {arch}"):
+    # for epoch in tqdm(range(num_epochs), desc=f"Training {arch}"):
+    for epoch in range(num_epochs):
         model.train()
         for inputs, labels in train_loader:
             outputs = model(inputs.to(device))
@@ -134,15 +135,17 @@ def train_evaluate_mil(
 
         # Validate the model
         model.eval()
+        val_loss = 0
         with torch.no_grad():
             for inputs, labels in val_loader:
                 outputs = model(inputs.to(device))
-                val_loss = criterion(outputs, labels.to(device))
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
-                    best_model_weights = model.state_dict()      
+                val_loss += criterion(outputs, labels.to(device)).item()
+            val_loss /= len(val_loader)
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_model_weights = model.state_dict()      
 
-        tqdm.write(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}, Validation Loss: {val_loss:.4f}')
+        # tqdm.write(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}, Validation Loss: {val_loss:.4f}')
         
     # Test the model
     model.load_state_dict(best_model_weights)
@@ -170,16 +173,19 @@ def train_evaluate_mil(
     return get_eval_metrics(test_labels, test_preds, test_probs, roc_kwargs=roc_kwargs, prefix=prefix)
 
 
-def save_features_and_labels(feature_extractor, transform, data_dir, save_dir, num_samples, ext='.jpg'):
+def save_features_and_labels(data_dir, save_dir, num_samples, ext='.jpg'):
 
     print("extracting features and saving to", save_dir)
     os.makedirs(save_dir, exist_ok=True, mode=0o777)
     os.chmod(save_dir, 0o777)
 
-    features = list(Path(save_dir).rglob('*.h5'))
+    features = list(Path(save_dir).rglob('**/*.h5'))
     if len(features) == num_samples:
         print("features already extracted at", save_dir)
         return
+
+    feature_extractor = get_models(args.model_name, args.img_size, saved_model_path=checkpoint)
+    transform = get_transforms(args.model_name, args.img_size, saved_model_path=checkpoint)
 
     # create dataset from list 
     class ListDataset(Dataset):
@@ -198,17 +204,21 @@ def save_features_and_labels(feature_extractor, transform, data_dir, save_dir, n
             return len(self.data)
 
         def __getitem__(self, idx):
-            img = Image.open(self.data[idx]).convert('RGB')
-            if self.transform:
-                img = self.transform(img)
-            
+            try:
+                img = Image.open(self.data[idx]).convert('RGB')
+                if self.transform:
+                    img = self.transform(img)
+            except Exception as e:
+                print(f"Error: {e}, idx: {idx}, path: {self.data[idx]}")
+                img = torch.zeros(3, 224, 224)
+
             label = self.get_labels(self.data[idx])
 
             return img, label, str(self.data[idx])
         
         def get_labels(self, path):
             if self.dataset == 'APL_AML_all':
-                patient = path.replace(data_dir, '').split('/')[1]
+                patient = str(path).replace(data_dir, '').split('/')[1]
                 label = self.labels[self.labels['Patient_ID'] == patient]['Diagnosis']
                 label = self.label_dict[label.values[0]]
             elif self.dataset == 'AML_Hehr':
@@ -232,11 +242,18 @@ def save_features_and_labels(feature_extractor, transform, data_dir, save_dir, n
         feature_extractor.eval()
         for images, labels, file_names in tqdm(dataloader):
             images = images.to(device)
-            batch_features = feature_extractor(images)
+            if args.model_name.lower()=="conch":
+                batch_features=feature_extractor.encode_image(images, proj_contrast=False, normalize=False)
+            else:
+                batch_features = feature_extractor(images)
 
-            parent_names = [Path(fn).parent for fn in file_names]
-
-            h5_filenames = [str(fn).replace(data_dir, str(save_dir)+'/') + '.h5' for fn in parent_names]
+            if args.dataset == 'AML_Hehr':
+                patient_names = [Path(fn).parent for fn in file_names]
+                h5_filenames = [str(fn).replace(data_dir, str(save_dir)+'/') + '.h5' for fn in patient_names]
+            elif args.dataset == 'APL_AML_all':
+                # find patient name from the path, 
+                patient_names = [str(fn).replace(data_dir, '').split('/')[1] for fn in file_names]
+                h5_filenames = [str(save_dir) +'/' + f'{fn}.h5' for fn in patient_names]
             
             for h5_filename, label, batch_feature in zip(h5_filenames, labels, batch_features):
                 if h5_filename not in embeddings_list.keys():
@@ -258,7 +275,7 @@ def save_h5(h5_filename, embeddings, label):
         hf.create_dataset("labels", data=label)
 
 
-def eval_task(dataset, feature_dir, folds):
+def eval_task(dataset_name, feature_dir, folds):
     # load task configs
     with open(f'dinov2/eval/slide_level/task_configs.yaml', 'r') as f:
         task_configs = yaml.safe_load(f)
@@ -280,11 +297,12 @@ def eval_task(dataset, feature_dir, folds):
 
             return features, label
 
-    if dataset == 'AML_Hehr':
+    if dataset_name == 'AML_Hehr':
         # 5-fold cross val on training data
         train_val_dataset = H5Dataset(Path(feature_dir) / 'train')
         train_val_labels = [path.parent.name for path in train_val_dataset.data]
         test_dataset = H5Dataset(Path(feature_dir) / 'test')
+        num_classes = len(task_configs[dataset_name]['label_dict'])
 
         splits = StratifiedKFold(n_splits=folds, shuffle=True, random_state=0)
         results = []
@@ -292,18 +310,46 @@ def eval_task(dataset, feature_dir, folds):
             train_dataset = Subset(train_val_dataset, train_idx)
             val_dataset = Subset(train_val_dataset, val_idx)
 
-            res = train_evaluate_mil(train_dataset, val_dataset, test_dataset, num_classes)
+            res = train_evaluate_mil(train_dataset, val_dataset, test_dataset, num_classes, arch=args.arch)
             results.append(res)
         
         print("====================================")
-        print(f'Final results averaged over {folds} folds for {dataset}')
+        print(f'Final results averaged over {folds} folds for {dataset_name}')
         results_mean = {key: np.mean([result[key] for result in results]) for key in results[0].keys()}
         results_std = {key: np.std([result[key] for result in results]) for key in results[0].keys()}
         for keys, values in results_mean.items():
             print(f"{keys.split('/')[-1]: <12}: {np.round(values, 4):.4f} ± {np.round(results_std[keys], 4):.4f}")
 
+    elif dataset_name == 'APL_AML_all':
+        dataset = H5Dataset(Path(feature_dir))
+        task_csv = pd.read_csv(task_configs[dataset_name]['csv'])
+        train_val_patients = task_csv[task_csv['Cohort'] == 'Discovery']['Patient_ID'].values
+        test_patients = task_csv[task_csv['Cohort'] == 'Validation']['Patient_ID'].values
+        num_classes = len(task_configs[dataset_name]['label_dict'])
+
+        train_val_idx = [i for i, h5_file in enumerate(dataset.data) if Path(h5_file).stem in train_val_patients]
+        test_idx = [i for i, h5_file in enumerate(dataset.data) if Path(h5_file).stem in test_patients]
+
+        train_val_dataset = Subset(dataset, train_val_idx)
+        train_val_labels = [sample[1] for sample in train_val_dataset]
+        test_dataset = Subset(dataset, test_idx)
+
+        splits = StratifiedKFold(n_splits=folds, shuffle=True, random_state=0)
+        results = []
+        for fold, (train_idx, val_idx) in enumerate(splits.split(train_val_dataset, train_val_labels)):
+            train_dataset = Subset(train_val_dataset, train_idx)
+            val_dataset = Subset(train_val_dataset, val_idx)
+
+            res = train_evaluate_mil(train_dataset, val_dataset, test_dataset, num_classes, arch=args.arch)
+            results.append(res)
+        print("====================================")
+        print(f'Final results averaged over {folds} folds for {dataset_name}')
+        results_mean = {key: np.mean([result[key] for result in results]) for key in results[0].keys()}
+        results_std = {key: np.std([result[key] for result in results]) for key in results[0].keys()}
+        for keys, values in results_mean.items():
+            print(f"{keys.split('/')[-1]: <12}: {np.round(values, 4):.4f} ± {np.round(results_std[keys], 4):.4f}")
     else:  
-        raise NotImplementedError(f"Dataset {dataset} not implemented")
+        raise NotImplementedError(f"Dataset {dataset_name} not implemented")
 
     return results
 
@@ -319,6 +365,7 @@ if __name__ == "__main__":
                         help='checkpoint to evaluate')  
     parser.add_argument('--checkpoint_root', type=str, default=None) 
     parser.add_argument('--model_name', type=str, default='dinov2_vits14')
+    parser.add_argument('--arch', type=str, default='ABMIL')
     parser.add_argument(
         "--img_size",
         help="size of image to be used",
@@ -336,32 +383,26 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     checkpoint_root = Path(args.checkpoint).parent.parent if args.checkpoint_root is None else Path(args.checkpoint_root)
+    checkpoint_name = Path(args.checkpoint).parent.name if args.checkpoint is not None else 'pretrained'
     # args.checkpoint = '/lustre/groups/shared/users/peng_marr/DinoBloomv2/DinoBloom_models/DinoBloom-S.pth'
     # checkpoint_root = Path('/lustre/groups/shared/users/peng_marr/DinoBloomv2/DinoBloom_models/DinoBloom-S') # Path(args.checkpoint).parent.parent
-    dataset = 'AML_Hehr'
     folds = 5
-    wandb.init(project="histo-collab", entity="DinoBloomv2-MIL-eval", name=checkpoint_root.name+'_'+dataset, mode='disabled') 
-    
-    # add tasks configs
-    args.num_samples = 242  # for AML_Hehr
+    wandb.init(project="histo-collab", entity="DinoBloomv2-MIL-eval", name=checkpoint_root.name+'_'+args.dataset, mode='disabled') 
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
-    num_epochs = 20
-
-    num_classes = 5
-    batch_size = 1
-
     # extract embeddings
-    feature_dir = checkpoint_root / 'features' / dataset
+    feature_dir = checkpoint_root / f'features_{checkpoint_name}' / args.dataset 
     feature_dir.mkdir(exist_ok=True, parents=True, mode=0o777)
 
     # Load the model
-    if args.model_name in ["owkin","resnet50","resnet50_full","remedis","imagebind"]:
+    if args.model_name in ["owkin", "resnet50", "resnet50_full", "remedis", "imagebind"]:
         sorted_paths=[None]
-    elif args.model_name in ["retccl","ctranspath"]:
-        sorted_paths=[Path(args.checkpoint)]
-    elif Path(args.checkpoint).is_file():
+    elif args.model_name in ["dinov2_vits14", "dinov2_vitb14", "dinov2_vitl14", "dinov2_vitg14"] and args.checkpoint is None:
+        sorted_paths = [None]
+    elif args.model_name in ["retccl", "ctranspath", "uni", "conch"]:
+        sorted_paths=[Path(checkpoint_root)]
+    elif args.checkpoint is not None and Path(args.checkpoint).is_file():
         sorted_paths = [Path(args.checkpoint)]
     else:
         sorted_paths = list(Path(args.checkpoint).rglob("*teacher_checkpoint.pth"))
@@ -369,24 +410,22 @@ if __name__ == "__main__":
     # load task configs
     with open(f'dinov2/eval/slide_level/task_configs.yaml', 'r') as f:
         task_configs = yaml.safe_load(f)
+        args.num_samples = task_configs[args.dataset]['num_samples']
 
     for checkpoint in sorted_paths:
-        feature_extractor = get_models(args.model_name, args.img_size, saved_model_path=checkpoint)
-        transform = get_transforms(args.model_name, args.img_size)
-
-        save_features_and_labels(feature_extractor, transform, task_configs[args.dataset]['root'], feature_dir, args.num_samples, ext=task_configs[dataset]['ext'])
+        save_features_and_labels(task_configs[args.dataset]['root'], feature_dir, args.num_samples, ext=task_configs[args.dataset]['ext'])
 
         if len(sorted_paths)>1:
             sorted_paths = sorted(sorted_paths, key=sort_key)
 
-        results = eval_task(dataset, feature_dir, folds=folds)
+        results = eval_task(args.dataset, feature_dir, folds=folds)
 
         results_mean = {key: np.mean([result[key] for result in results]) for key in results[0].keys()}
         results_std = {key: np.std([result[key] for result in results]) for key in results[0].keys()}
 
         wandb.log(results_mean)
         print("====================================")
-        print(f'Final results averaged over {folds} folds for {dataset}')
+        print(f'Final results averaged over {folds} folds for {args.dataset}')
         for keys, values in results_mean.items():
             print(f"{keys.split('/')[-1]: <12}: {np.round(values, 4):.4f} ± {np.round(results_std[keys], 4):.4f}")
 
@@ -399,9 +438,9 @@ if __name__ == "__main__":
         results.append(results_mean)
         results.append(results_std)
 
-
-        pd.DataFrame(results).to_csv(f"{args.checkpoint_root}/results_ABMIL_{args.dataset}_{args.model_name}.csv")
-        print(f"results saved to {args.checkpoint_root}/results_ABMIL_{args.dataset}_{args.model_name}.csv")
+        results_path = f"{args.checkpoint_root}/results_{args.arch}_{args.dataset}_{args.model_name}_{Path(args.checkpoint_root).name}_{checkpoint_name}.csv"
+        pd.DataFrame(results).to_csv(results_path)
+        print(f"results saved to {results_path}")
 
 
     
