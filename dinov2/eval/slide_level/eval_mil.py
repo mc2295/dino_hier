@@ -24,8 +24,9 @@ from torch.utils.data import DataLoader, Dataset, Subset
 from tqdm import tqdm
 
 import dinov2.eval.slide_level.models.aggregators as models
-from dinov2.eval.patch_level.dataset import PathImageDataset
-from dinov2.eval.patch_level.general_patch_eval import save_features_and_labels
+#from dinov2.eval.patch_level.dataset import PathImageDataset
+#from dinov2.eval.patch_level.general_patch_eval import save_features_and_labels
+from dinov2.eval.slide_level.extract_feature_Beluga import save_features_and_labels_Beluga
 from dinov2.eval.patch_level.models.return_model import (get_models,
                                                          get_transforms)
 
@@ -217,10 +218,13 @@ def save_features_and_labels(data_dir, save_dir, num_samples, ext='.jpg'):
             return img, label, str(self.data[idx])
         
         def get_labels(self, path):
-            if self.dataset == 'APL_AML_all':
+            if self.dataset == 'APL_AML_all': 
                 patient = str(path).replace(data_dir, '').split('/')[1]
                 label = self.labels[self.labels['Patient_ID'] == patient]['Diagnosis']
-                label = self.label_dict[label.values[0]]
+                if label.values.size == 0:
+                    label = -1
+                else:
+                    label = self.label_dict[label.values[0]]
             elif self.dataset == 'AML_Hehr':
                 label = self.label_dict[Path(path).parent.parent.name]
             else: 
@@ -247,7 +251,7 @@ def save_features_and_labels(data_dir, save_dir, num_samples, ext='.jpg'):
             else:
                 batch_features = feature_extractor(images)
 
-            if args.dataset == 'AML_Hehr':
+            if args.dataset == 'AML_Hehr': 
                 patient_names = [Path(fn).parent for fn in file_names]
                 h5_filenames = [str(fn).replace(data_dir, str(save_dir)+'/') + '.h5' for fn in patient_names]
             elif args.dataset == 'APL_AML_all':
@@ -348,8 +352,37 @@ def eval_task(dataset_name, feature_dir, folds):
         results_std = {key: np.std([result[key] for result in results]) for key in results[0].keys()}
         for keys, values in results_mean.items():
             print(f"{keys.split('/')[-1]: <12}: {np.round(values, 4):.4f} ± {np.round(results_std[keys], 4):.4f}")
+
+    elif dataset_name == 'Beluga': # Considering only one fold training-testing
+        dataset = H5Dataset(Path(feature_dir))
+        task_csv = pd.read_csv(task_configs[dataset_name]['csv'])
+        train_patients = task_csv[task_csv['Cohort'] == 'Train']['Patient_ID'].values
+        val_patients = task_csv[task_csv['Cohort'] == 'Val']['Patient_ID'].values
+        test_patients = task_csv[task_csv['Cohort'] == 'Test']['Patient_ID'].values
+        num_classes = len(task_configs[dataset_name]['label_dict'])
+
+        train_idx = [i for i, h5_file in enumerate(dataset.data) if Path(h5_file).stem in train_patients]
+        val_idx = [i for i, h5_file in enumerate(dataset.data) if Path(h5_file).stem in val_patients]
+        test_idx = [i for i, h5_file in enumerate(dataset.data) if Path(h5_file).stem in test_patients]
+
+        train_dataset = Subset(dataset, train_idx)
+        val_dataset = Subset(dataset, val_idx)
+        test_dataset = Subset(dataset, test_idx)
+        results = []
+
+        res = train_evaluate_mil(train_dataset, val_dataset, test_dataset, num_classes, arch=args.arch)
+        results.append(res)
+        print("====================================")
+        print(f'Final results averaged over {folds} folds for {dataset_name}')
+        results_mean = {key: np.mean([result[key] for result in results]) for key in results[0].keys()}
+        results_std = {key: np.std([result[key] for result in results]) for key in results[0].keys()}
+        for keys, values in results_mean.items():
+            print(f"{keys.split('/')[-1]: <12}: {np.round(values, 4):.4f} ± {np.round(results_std[keys], 4):.4f}")
+
     else:  
         raise NotImplementedError(f"Dataset {dataset_name} not implemented")
+
+
 
     return results
 
@@ -365,6 +398,8 @@ if __name__ == "__main__":
                         help='checkpoint to evaluate')  
     parser.add_argument('--checkpoint_root', type=str, default=None) 
     parser.add_argument('--model_name', type=str, default='dinov2_vits14')
+    parser.add_argument('--feature_extract', type=int, default=1, help='set 1 if you want to extract features, otherwise 0')
+    parser.add_argument('--feature_dir', type=str, default=None)
     parser.add_argument('--arch', type=str, default='ABMIL')
     parser.add_argument(
         "--img_size",
@@ -377,6 +412,10 @@ if __name__ == "__main__":
         default=64,
         type=int,
     )
+    parser.add_argument(
+        "--folds",
+        default=5,
+        type=int)
 
 
 
@@ -386,14 +425,17 @@ if __name__ == "__main__":
     checkpoint_name = Path(args.checkpoint).parent.name if args.checkpoint is not None else 'pretrained'
     # args.checkpoint = '/lustre/groups/shared/users/peng_marr/DinoBloomv2/DinoBloom_models/DinoBloom-S.pth'
     # checkpoint_root = Path('/lustre/groups/shared/users/peng_marr/DinoBloomv2/DinoBloom_models/DinoBloom-S') # Path(args.checkpoint).parent.parent
-    folds = 5
+    folds = args.folds
     wandb.init(project="histo-collab", entity="DinoBloomv2-MIL-eval", name=checkpoint_root.name+'_'+args.dataset, mode='disabled') 
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     # extract embeddings
-    feature_dir = checkpoint_root / f'features_{checkpoint_name}' / args.dataset 
-    feature_dir.mkdir(exist_ok=True, parents=True, mode=0o777)
+    if args.feature_dir is None:
+        feature_dir = checkpoint_root / f'features_{checkpoint_name}' / args.dataset 
+        feature_dir.mkdir(exist_ok=True, parents=True, mode=0o777)
+    else:
+        feature_dir = args.feature_dir
 
     # Load the model
     if args.model_name in ["owkin", "resnet50", "resnet50_full", "remedis", "imagebind"]:
@@ -413,7 +455,11 @@ if __name__ == "__main__":
         args.num_samples = task_configs[args.dataset]['num_samples']
 
     for checkpoint in sorted_paths:
-        save_features_and_labels(task_configs[args.dataset]['root'], feature_dir, args.num_samples, ext=task_configs[args.dataset]['ext'])
+        if args.feature_dir is None or args.feature_extract==1:
+            if args.dataset == 'Beluga':
+                save_features_and_labels_Beluga(task_configs,feature_dir,checkpoint,args)
+            else:
+                save_features_and_labels(task_configs[args.dataset]['root'], feature_dir, args.num_samples, ext=task_configs[args.dataset]['ext'])
 
         if len(sorted_paths)>1:
             sorted_paths = sorted(sorted_paths, key=sort_key)
