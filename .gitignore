@@ -35,3 +35,5 @@ eval_external.sh
 **.csv
 **.safetensors
 **.tar.gz
+**.joblib
+**.pkl
