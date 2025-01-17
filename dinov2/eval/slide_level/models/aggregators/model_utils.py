@@ -7,7 +7,7 @@ from functools import wraps
 from math import ceil, pi
 from typing import Optional
 
-import dgl.function as fn
+# import dgl.function as fn
 import numpy as np
 import torch
 import torch.nn as nn
@@ -546,47 +546,47 @@ class NystromTransformerLayer(nn.Module):
         return x
 
 
-class GraphTransformerLayer(nn.Module):
-    """
-    Param:
-    """
+# class GraphTransformerLayer(nn.Module):
+#     """
+#     Param:
+#     """
 
-    def __init__(self, in_dim, out_dim, num_heads, dropout=0.0, layer_norm=False, residual=True, use_bias=False):
-        super().__init__()
+#     def __init__(self, in_dim, out_dim, num_heads, dropout=0.0, layer_norm=False, residual=True, use_bias=False):
+#         super().__init__()
 
-        self.in_channels = in_dim
-        self.out_channels = out_dim
-        self.num_heads = num_heads
-        self.dropout = dropout
-        self.residual = residual
-        self.layer_norm = layer_norm
+#         self.in_channels = in_dim
+#         self.out_channels = out_dim
+#         self.num_heads = num_heads
+#         self.dropout = dropout
+#         self.residual = residual
+#         self.layer_norm = layer_norm
 
-        self.attention = GraphAttention(in_dim, out_dim // num_heads, num_heads, use_bias)
+#         self.attention = GraphAttention(in_dim, out_dim // num_heads, num_heads, use_bias)
 
-        self.O = nn.Linear(out_dim, out_dim)
+#         self.O = nn.Linear(out_dim, out_dim)
 
-        if self.layer_norm:
-            self.layer_norm1 = nn.LayerNorm(out_dim)
+#         if self.layer_norm:
+#             self.layer_norm1 = nn.LayerNorm(out_dim)
 
-        if self.layer_norm:
-            self.layer_norm2 = nn.LayerNorm(out_dim)
+#         if self.layer_norm:
+#             self.layer_norm2 = nn.LayerNorm(out_dim)
 
-    def forward(self, g, h):
-        h_in1 = h  # for first residual connection
+#     def forward(self, g, h):
+#         h_in1 = h  # for first residual connection
 
-        # multi-head attention out
-        attn_out = self.attention(g, h)
+#         # multi-head attention out
+#         attn_out = self.attention(g, h)
 
-        h = attn_out.view(-1, self.out_channels)
+#         h = attn_out.view(-1, self.out_channels)
 
-        h = F.dropout(h, self.dropout, training=self.training)
+#         h = F.dropout(h, self.dropout, training=self.training)
 
-        h = self.O(h)
+#         h = self.O(h)
 
-        if self.residual:
-            h = h_in1 + h  # residual connection
+#         if self.residual:
+#             h = h_in1 + h  # residual connection
 
-        if self.layer_norm:
-            h = self.layer_norm1(h)
+#         if self.layer_norm:
+#             h = self.layer_norm1(h)
 
-        return h
+#         return h

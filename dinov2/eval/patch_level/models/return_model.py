@@ -3,13 +3,8 @@ import os
 import timm
 import torch
 import torch.nn as nn
-from dinov2.eval.patch_level.models.ctran import ctranspath
-from dinov2.eval.patch_level.models.imagebind import imagebind_huge
-from dinov2.eval.patch_level.models.resnet_retccl import resnet50 as retccl_res50
-from dinov2.eval.patch_level.models.sam import build_sam_vit_b, build_sam_vit_h, build_sam_vit_l
 
 from torchvision import transforms
-from torchvision.models import resnet
 from transformers import BeitFeatureExtractor, Data2VecVisionModel, ViTModel, AutoImageProcessor
 
 # RETCCL_PATH = '/lustre/groups/shared/users/peng_marr/pretrained_models/retccl.pth'
@@ -32,10 +27,12 @@ def get_models(modelname, image_size, saved_model_path=None):
 
     # --- histology-pretrained models
     if modelname.lower() == "ctranspath":
+        from dinov2.eval.patch_level.models.ctran import ctranspath
         model = get_ctranspath(saved_model_path)
     elif modelname.lower() == 'remedis':
         model = hub.load('cxr-52x2-remedis-m')
     elif modelname.lower() == "retccl":
+        from dinov2.eval.patch_level.models.resnet_retccl import resnet50 as retccl_res50
         model = get_retCCL(saved_model_path)
     elif modelname.lower() == "owkin":
         model = Phikon()
@@ -51,6 +48,7 @@ def get_models(modelname, image_size, saved_model_path=None):
         model = get_full_res50()
 
     elif modelname.lower() == "imagebind":
+        from dinov2.eval.patch_level.models.imagebind import imagebind_huge
         model = get_imagebind(saved_model_path)
     elif modelname.lower() == "beit_fb":
         model = BeitModel(device)    
@@ -201,19 +199,6 @@ def get_dino_finetuned_downloaded(model_path, modelname,image_size):
         model.load_state_dict(new_state_dict, strict=True)
         
     return model
-
-
-def get_sam_vit_h(model_path):
-    return build_sam_vit_h(model_path)
-
-
-def get_sam_vit_l(model_path):
-    return build_sam_vit_l(model_path)
-
-
-def get_sam_vit_b(model_path):
-    return build_sam_vit_b(model_path)
-
 
 
 def get_ctranspath(model_path):

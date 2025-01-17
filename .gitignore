@@ -33,3 +33,7 @@ eval_external.sh
 *.jpeg
 *.jpg
 **.csv
+**.safetensors
+**.tar.gz
+**.joblib
+**.pkl

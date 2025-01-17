@@ -1,6 +1,6 @@
 # this script evaluates datasets where we have a fixed split , e.g. part is used to train dinobloom
-
-
+import time
+start = time.time()
 import argparse
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -23,6 +23,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from dataset import CustomImageDataset
 
+print(f"imports took {time.time()-start:.2f}s")
 
 parser = argparse.ArgumentParser(description="Feature extraction")
 os.environ["WANDB__SERVICE_WAIT"] = "300"
@@ -64,7 +65,7 @@ parser.add_argument(
 
 parser.add_argument(
     "--image_path_train",
-    help="path to csv file",
+    help="path to csv file", 
     default="./dinov2/eval/miccai/nct_crc_train.csv",
     type=str,
 )
@@ -147,6 +148,7 @@ def save_features_and_labels_individual(feature_extractor, dataloader, save_dir,
                 with h5py.File(h5_filename, "w") as hf:
                     hf.create_dataset("features", data=img_features.cpu().numpy())
                     hf.create_dataset("labels", data=img_label)
+                os.chmod(h5_filename, 0o777)
 
 
 def sort_key(path):
