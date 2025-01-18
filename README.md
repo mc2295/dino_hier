@@ -43,6 +43,9 @@ python dinov2/eval/patch_level/general_fixed_split_patch_eval.py --model_path $M
 # rbc
 python dinov2/eval/patch_level/general_fixed_split_patch_eval.py --model_path $MODEL_PATH --model_name $MODEL_NAME --experiment_name $EXP_NAME --run_name rbc_eval --image_path_test dinov2/eval/patch_level/splits/rbc_test.csv --image_path_train dinov2/eval/patch_level/splits/rbc_train.csv
 
+# Cervix data $DATA_NAME = ['LBC', 'HiCervix', 'SIPaKMeD', 'ComparisonDetector']
+python dinov2/eval/patch_level/general_fixed_split_patch_eval.py --model_path $MODEL_PATH --model_name $MODEL_NAME --experiment_name $EXP_NAME --run_name $DATA_NAME --image_path_test dinov2/eval/patch_level/splits/cerv_{$DATA_NAME}_test.csv --image_path_train dinov2/eval/patch_level/splits/cerv_{$DATA_NAME}_train.csv
+
 ```
 
 ### Patient-level evaluation
