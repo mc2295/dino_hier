@@ -37,3 +37,4 @@ eval_external.sh
 **.tar.gz
 **.joblib
 **.pkl
+.DS_Store
