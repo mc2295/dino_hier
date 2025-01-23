@@ -100,7 +100,7 @@ def train_evaluate_mil(
     if wandb:
         wandb.config({
             "num_epochs": num_epochs,
-            "random_state": random_state,
+            "random_state": random_state,   
             "dropout": dropout,
             "n_heads": n_heads,
             "lr": 0.0001,
@@ -391,8 +391,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train a WBC MIL model.')
     parser.add_argument('--dataset', 
                         type=str, 
-                        help='name of the dataset for evaluation',
-                        default='AML_Hehr')
+                        help='name of the dataset for evaluation (options: AML_Hehr, APL_AML_all, Beluga))',
+                        default='AML_Hehr', choices=['AML_Hehr', 'APL_AML_all', 'Beluga'])
     parser.add_argument('--checkpoint', 
                         type=str, default=None,
                         help='checkpoint to evaluate')  
@@ -484,7 +484,7 @@ if __name__ == "__main__":
         results.append(results_mean)
         results.append(results_std)
 
-        results_path = f"{args.checkpoint_root}/results_{args.arch}_{args.dataset}_{args.model_name}_{Path(args.checkpoint_root).name}_{checkpoint_name}.csv"
+        results_path = f"{args.checkpoint_root}/results_{args.dataset}_{args.arch}_{args.model_name}_{Path(args.checkpoint_root).name}_{checkpoint_name}.csv"
         pd.DataFrame(results).to_csv(results_path)
         print(f"results saved to {results_path}")
 
