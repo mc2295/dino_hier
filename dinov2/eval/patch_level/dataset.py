@@ -141,6 +141,7 @@ class WbcAttDataset(Dataset):
 class PathImageDataset(Dataset):
     def __init__(self, image_path, transform,class_to_label=None,filetype=".tiff",img_size=(224,224)):
         self.images = list(Path(image_path).rglob("*"+filetype))
+        self.images = [i for i in self.images if 'checkpoints' not in str(i)]
         self.transform = transform
         
         if class_to_label is None:
