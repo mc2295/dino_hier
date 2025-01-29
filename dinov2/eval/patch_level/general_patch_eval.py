@@ -37,10 +37,12 @@ parser.add_argument(
     type=str,
 )
 
+parser.add_argument("--checkpoint_root", help="root of checkpoints", type=str)
+
 parser.add_argument(
     "--experiment_name",
     help="name of experiment",
-    default="acevedo_rankloss",
+    default="debug",
     type=str,
 )
 
@@ -64,8 +66,9 @@ parser.add_argument(
     type=int,
 )
 
-# acevedo: /lustre/groups/labs/marr/qscd01/datasets/Acevedo_20/PBC_dataset_normal_DIB/
-#matek: /lustre/groups/labs/marr/qscd01/datasets/191024_AML_Matek/AML-Cytomorphology_LMU/
+# acevedo: /lustre/groups/labs/marr/qscd01/datasets/armingruber/_Domains/Acevedo_cropped/
+# matek: /lustre/groups/labs/marr/qscd01/datasets/191024_AML_Matek/AML-Cytomorphology_LMU/
+# raabin: /lustre/groups/shared/histology_data/hematology_data/raabin_wbc
 parser.add_argument(
     "--dataset_path",
     help="path to datasetfolder",
@@ -127,11 +130,14 @@ parser.add_argument(
 )
 
 
-def save_features_and_labels(feature_extractor, dataloader, save_dir,dataset_len):
+def save_features_and_labels(feature_extractor, dataloader, save_dir, dataset_len, model_name):
 
     print("extracting features..")
     os.makedirs(save_dir, exist_ok=True, mode=0o777)
-    os.chmod(save_dir, 0o777)
+    try: 
+        os.chmod(save_dir, 0o777)
+    except PermissionError:
+        pass
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     with torch.no_grad():
@@ -139,16 +145,25 @@ def save_features_and_labels(feature_extractor, dataloader, save_dir,dataset_len
 
         for images, labels, names in tqdm(dataloader):
             images = images.to(device)
-            batch_features = feature_extractor(images)
+            if model_name.lower()=="conch":
+                batch_features=feature_extractor.encode_image(images, proj_contrast=False, normalize=False)
+            else:
+                batch_features = feature_extractor(images)
 
             labels_np = labels.numpy()
 
             for img_name, img_features, img_label in zip(names, batch_features, labels_np):
                 h5_filename = os.path.join(save_dir, f"{img_name}.h5")
+                
+                # check if file exists
+                if os.path.isfile(h5_filename):
+                    continue
+                else:
+                    with h5py.File(h5_filename, "w") as hf:
+                        hf.create_dataset("features", data=img_features.cpu().numpy())
+                        hf.create_dataset("labels", data=img_label)
+                    os.chmod(h5_filename, 0o777)
 
-                with h5py.File(h5_filename, "w") as hf:
-                    hf.create_dataset("features", data=img_features.cpu().numpy())
-                    hf.create_dataset("labels", data=img_label)
 
 
 def sort_key(path):
@@ -158,7 +173,7 @@ def sort_key(path):
     return number_part
 
 
-def create_stratified_folds(labels):
+def create_stratified_folds(labels, num_folds=5):
     """
     Splits indices into 5 stratified folds based on the provided labels,
     returning indices for train and test sets for each fold.
@@ -171,7 +186,7 @@ def create_stratified_folds(labels):
     """
     
     # Initialize StratifiedKFold
-    skf = StratifiedKFold(n_splits=5)
+    skf = StratifiedKFold(n_splits=num_folds)
     
     # Prepare for stratified splitting
     folds = []
@@ -183,7 +198,7 @@ def create_stratified_folds(labels):
 def main(args):
 
     model_name = args.model_name
-    transform = get_transforms(model_name,args.img_size)
+    transform = get_transforms(model_name, args.img_size, model_path=args.model_path)
 
     # make sure encoding is always the same
 
@@ -200,9 +215,9 @@ def main(args):
     # sorry for the bad naming here, its not yet sorted :)
     
 
-    if model_name in ["owkin","resnet50","resnet50_full","remedis","imagebind"]:
+    if model_name in ["owkin", "resnet50", "resnet50_full", "remedis", "imagebind"]:
         sorted_paths=[None]
-    elif model_name in ["retccl","ctranspath"]:
+    elif model_name in ["retccl", "ctranspath", "uni", "conch", "dinobloom_s", "dinobloom_b", "dinobloom_l", "dinobloom_g"]:
         sorted_paths=[Path(args.model_path)]
     else:
         sorted_paths = list(Path(args.model_path).rglob("*teacher_checkpoint.pth"))
@@ -227,14 +242,14 @@ def main(args):
         dataset = PathImageDataset(args.dataset_path, transform=transform, filetype=args.filetype,img_size=(args.img_size,args.img_size))
         dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
-        save_features_and_labels(feature_extractor, dataloader, feature_dir,len(dataset))
+        save_features_and_labels(feature_extractor, dataloader, feature_dir,len(dataset),model_name)
         
         log_reg_folds=[]
         knn_folds=[]
 
         all_features=list(feature_dir.glob("*.h5"))
         
-        data,labels=get_data(all_features)
+        data,labels, filenames=get_data(all_features)
         folds=create_stratified_folds(labels)
 
         for i, (train_indices, test_indices) in enumerate(folds):
@@ -243,17 +258,19 @@ def main(args):
             train_data=data[train_indices]
             train_labels=labels[train_indices]
 
-            test_data=data[test_indices]
-            test_labels=labels[test_indices]
+
+            test_data = data[test_indices]
+            test_labels = labels[test_indices]
+            test_filenames = np.array(filenames)[test_indices]
             # Create data loaders for the  datasets
 
 
             print("data fully loaded")
 
             if args.logistic_regression:
-                logreg_dir = parent_dir/ (args.wandb_project+"log_reg_eval")
+                logreg_dir = parent_dir/ (args.wandb_project+"_log_reg_eval")
                 log_reg = train_and_evaluate_logistic_regression(
-                    train_data, train_labels, test_data, test_labels, logreg_dir, max_iter=1000
+                    train_data, train_labels, test_data, test_labels, logreg_dir, test_filenames,i, max_iter=1000
                 )
 
                 log_reg_folds.append(log_reg)
@@ -266,8 +283,8 @@ def main(args):
                 print("umap done")
 
             if args.knn:
-                knn_dir = parent_dir / (args.wandb_project+"knn_eval")
-                knn_metrics = perform_knn(train_data, train_labels, test_data, test_labels, knn_dir)
+                knn_dir = parent_dir / (args.wandb_project+"_knn_eval")
+                knn_metrics = perform_knn(train_data, train_labels, test_data, test_labels, knn_dir, test_filenames,i)
                 knn_folds.append(knn_metrics)
                 print("knn done")
 
@@ -283,12 +300,42 @@ def main(args):
             {"log_reg": aggregated_log_reg, "umap_test": wandb.Image(umap_test), "umap_train": wandb.Image(umap_train)}, step=step
         )
 
+        # save the aggregated log_reg results as csv
+        df_log_reg = pd.DataFrame(aggregated_log_reg, index=[0])
+        df_log_reg.to_csv(logreg_dir / "aggregated_log_reg_results.csv", index=False)
+
+        num_folds = len(log_reg_folds)
+        results = {
+            "fold": [i for i in range(num_folds)],
+            "knn_1/weighted_f1": [knn_folds[i]["knn_1"]["weighted_f1"] for i in range(num_folds)],
+            "knn_1/balanced_accuracy": [knn_folds[i]["knn_1"]["balanced_accuracy"] for i in range(num_folds)],
+            "knn_20/weighted_f1": [knn_folds[i]["knn_20"]["weighted_f1"] for i in range(num_folds)],
+            "knn_20/balanced_accuracy": [knn_folds[i]["knn_20"]["balanced_accuracy"] for i in range(num_folds)],
+            "log_reg/weighted_f1": [log_reg_folds[i]["Weighted_F1"] for i in range(num_folds)],
+            "log_reg/balanced_accuracy": [log_reg_folds[i]["Balanced_Acc"] for i in range(num_folds)],
+        }
+
+        # attach mean and std to results
+        for key in results.keys():
+            if key != "fold":
+                results[key].append(np.mean(results[key]))
+                results[key].append(np.std(results[key]))
+            else:
+                results[key].append("mean")
+                results[key].append("std")
+        
+        dataset_name = Path(args.dataset_path).name
+        checkpoint_name = checkpoint.name if not checkpoint.name in ["teacher_checkpoint.pth", "pytorch_model.bin"] else checkpoint.parent.name
+        results_path = f"{args.checkpoint_root}/results_{dataset_name}_{args.model_name}_{Path(args.checkpoint_root).name}_{checkpoint_name}.csv"
+        pd.DataFrame(results).to_csv(results_path, index=False)
+        print(f"results saved to {results_path}")
+
 
 def process_file(file_name):
     with h5py.File(file_name, "r") as hf:
         features = torch.tensor(hf["features"][:]).tolist()
         label = int(hf["labels"][()])
-    return features, label
+    return features, label, Path(file_name).name
 
 
 # {"Accuracy": accuracy, "Balanced_Acc": balanced_acc, "Weighted_F1": weighted_f1}
@@ -298,15 +345,16 @@ def get_data(all_data):
     # Define the directories for train, validation, and test data and labels
 
     # Load training data into dictionaries
-    features, labels = [], []
+    features, labels, filenames = [], [], []
 
     with ThreadPoolExecutor() as executor:
         futures = [executor.submit(process_file, file_name) for file_name in all_data]
 
         for i, future in tqdm(enumerate(futures), desc="Loading data"):
-            feature, label = future.result()
+            feature, label, filename = future.result()
             features.append(feature)
             labels.append(label)
+            filenames.append(filename)
 
     # Convert the lists to NumPy arrays
     features = np.array(features)
@@ -314,17 +362,21 @@ def get_data(all_data):
     # Flatten test_data
     features = features.reshape(features.shape[0], -1)  # Reshape to (n_samples, 384)
 
-    return features, labels
+    return features, labels, filenames
 
 
-def perform_knn(train_data, train_labels, test_data, test_labels, save_dir):
+def perform_knn(train_data, train_labels, test_data, test_labels, save_dir, filenames, fold):
     # Define a range of values for n_neighbors to search
     n_neighbors_values = [1, 20]
     # n_neighbors_values = [1, 2, 5, 10, 20, 50, 100, 500]
     # n_neighbors_values = [1, 2, 3, 4, 5] # -> for testing
     metrics_dict = {}
     os.makedirs(save_dir, exist_ok=True, mode=0o777)
-    os.chmod(save_dir, 0o777)
+    try:
+        os.chmod(save_dir, 0o777)
+    except PermissionError:
+        pass
+
     for n_neighbors in n_neighbors_values:
         # Initialize a KNeighborsClassifier with the current n_neighbors
         knn = KNeighborsClassifier(n_neighbors=n_neighbors)
@@ -360,8 +412,8 @@ def perform_knn(train_data, train_labels, test_data, test_labels, save_dir):
         # Log the final loss, accuracy, and classification report using wandb.log
         # wandb.log({"Classification Report": wandb.Table(dataframe=report_df)})
 
-        df_labels_to_save = pd.DataFrame({"True Labels": test_labels, "Predicted Labels": test_predictions})
-        filename = f"{Path(save_dir).name}_labels_and_predictions.csv"
+        df_labels_to_save = pd.DataFrame({"filename": filenames, "label": test_labels, "prediction": test_predictions})
+        filename = f"{Path(save_dir).name}_logreg_labels_and_predictions_fold_{fold}.csv"
         file_path = os.path.join(save_dir, filename)
         # Speichern des DataFrames in der CSV-Datei
         df_labels_to_save.to_csv(file_path, index=False)
@@ -448,7 +500,7 @@ def create_umap(data, labels, save_dir, filename_addon="train"):
     return im
 
 
-def train_and_evaluate_logistic_regression(train_data, train_labels, test_data, test_labels, save_dir, max_iter=1000):
+def train_and_evaluate_logistic_regression(train_data, train_labels, test_data, test_labels, save_dir,filenames, fold, max_iter=1000):
     # Initialize wandb
 
     M = train_data.shape[1]
@@ -470,10 +522,14 @@ def train_and_evaluate_logistic_regression(train_data, train_labels, test_data, 
     # auroc = roc_auc_score(test_labels, test_predictions, multi_class='ovr', average='weighted')
     report = classification_report(test_labels, test_predictions, output_dict=True)
 
-    df_labels_to_save = pd.DataFrame({"True Labels": test_labels, "Predicted Labels": test_predictions})
-    filename = f"{Path(save_dir).name}_labels_and_predictions.csv"
+    df_labels_to_save = pd.DataFrame({"filename": filenames, "label": test_labels, "prediction": test_predictions})
+    filename = f"{Path(save_dir).name}_logreg_labels_and_predictions_fold_{fold}.csv"
     os.makedirs(save_dir, exist_ok=True, mode=0o777)
-    os.chmod(save_dir, 0o777)
+    try: 
+        os.chmod(save_dir, 0o777)
+    except PermissionError:
+        pass
+
     file_path = os.path.join(save_dir, filename)
     # Speichern des DataFrames in der CSV-Datei
     df_labels_to_save.to_csv(file_path, index=False)

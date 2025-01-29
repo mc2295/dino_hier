@@ -57,11 +57,22 @@ def get_models(modelname, image_size, saved_model_path=None):
     elif modelname.lower().replace("_reg","") in ["dinov2_vits14","dinov2_vitb14","dinov2_vitl14","dinov2_vitg14"]:
         model = get_dino_finetuned_downloaded(saved_model_path,modelname,image_size)
 
+    elif modelname.lower() in ["dinobloom_s","dinobloom_b","dinobloom_l","dinobloom_g"]:
+        modelname_dict= {"dinobloom_s":"dinov2_vits14", "dinobloom_b":"dinov2_vitb14", "dinobloom_l":"dinov2_vitl14", "dinobloom_g":"dinov2_vitg14"}
+        modelname = modelname_dict[modelname]
+        model = get_dino_finetuned_downloaded(saved_model_path,modelname,image_size)
+
     elif modelname.lower() in ["dinov2_vits14_classifier","dinov2_vitb14_classifier","dinov2_vitl14_classifier","dinov2_vitg14_classifier"]:
         model = get_dino_student_classifier(saved_model_path, modelname)
 
     elif modelname.lower() == "vim_finetuned":
         model = get_vim_finetuned(saved_model_path)
+    
+    elif modelname.lower() == "uni":
+        model = get_uni(saved_model_path)
+
+    elif modelname.lower() == "conch":
+        model= get_conch(saved_model_path)
         
     else: 
         raise ValueError(f"Model {modelname} not found")
@@ -109,6 +120,7 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.net(x)
     
+
 def get_dino_student_classifier(model_path, modelname,n_classes=18):
     modelname=modelname.replace("_classifier","")
     model = torch.hub.load("facebookresearch/dinov2",modelname )
@@ -236,8 +248,7 @@ def get_imagebind(pretrained=True):
 def multiply_by_255(img):
     return img * 255
 
-
-def get_transforms(model_name,image_size=224, saved_model_path=None):
+def get_transforms(model_name,image_size=224, model_path=None):
     # from imagenet, leave as is
     mean = (0.485, 0.456, 0.406)
     std = (0.229, 0.224, 0.225)
@@ -277,6 +288,10 @@ def get_transforms(model_name,image_size=224, saved_model_path=None):
         "dinov2_finetuned_downloaded",
         "remedis",
         "vim_finetuned",
+        "dinobloom_s",
+        "dinobloom_b",
+        "dinobloom_l",
+        "dinobloom_g"
     ]:
         size = image_size
     elif "sam" in model_name.lower():
@@ -308,7 +323,7 @@ def get_transforms(model_name,image_size=224, saved_model_path=None):
 
     if model_name.lower() == "conch":
         from conch.open_clip_custom import create_model_from_pretrained 
-        _ , preprocess_transforms = create_model_from_pretrained("conch_ViT-B-16", checkpoint_path=os.path.join(saved_model_path,"pytorch_model.bin"))
+        _ , preprocess_transforms = create_model_from_pretrained("conch_ViT-B-16", checkpoint_path=os.path.join(model_path,"pytorch_model.bin"))
 
     return preprocess_transforms
 
