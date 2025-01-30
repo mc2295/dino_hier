@@ -123,7 +123,7 @@ def train_evaluate_mil(
     # Train the model
     best_val_loss, best_model_weights = 1000, None
     # for epoch in tqdm(range(num_epochs), desc=f"Training {arch}"):
-    for epoch in range(num_epochs):
+    for epoch in tqdm(range(num_epochs), desc="Training Progress", unit="epoch"):
         model.train()
         for inputs, labels in train_loader:
             outputs = model(inputs.to(device))
@@ -146,7 +146,7 @@ def train_evaluate_mil(
             best_val_loss = val_loss
             best_model_weights = model.state_dict()      
 
-        # tqdm.write(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}, Validation Loss: {val_loss:.4f}')
+        tqdm.write(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}, Validation Loss: {val_loss:.4f}')
         
     # Test the model
     model.load_state_dict(best_model_weights)
@@ -356,22 +356,26 @@ def eval_task(dataset_name, feature_dir, folds):
     elif dataset_name == 'Beluga': # Considering only one fold training-testing
         dataset = H5Dataset(Path(feature_dir))
         task_csv = pd.read_csv(task_configs[dataset_name]['csv'])
-        train_patients = task_csv[task_csv['Cohort'] == 'Train']['Patient_ID'].values
-        val_patients = task_csv[task_csv['Cohort'] == 'Val']['Patient_ID'].values
+        train_val_patients = task_csv[task_csv['Cohort'] != 'Test']['Patient_ID'].values
+        patient_to_label = dict(zip(task_csv['Patient_ID'], task_csv['Diagnosis']))
+        train_val_labels = [patient_to_label[Path(h5_file).stem] for i, h5_file in enumerate(dataset.data) if Path(h5_file).stem in train_val_patients]
         test_patients = task_csv[task_csv['Cohort'] == 'Test']['Patient_ID'].values
         num_classes = len(task_configs[dataset_name]['label_dict'])
 
-        train_idx = [i for i, h5_file in enumerate(dataset.data) if Path(h5_file).stem in train_patients]
-        val_idx = [i for i, h5_file in enumerate(dataset.data) if Path(h5_file).stem in val_patients]
+        train_val_idx = [i for i, h5_file in enumerate(dataset.data) if Path(h5_file).stem in train_val_patients]
         test_idx = [i for i, h5_file in enumerate(dataset.data) if Path(h5_file).stem in test_patients]
 
-        train_dataset = Subset(dataset, train_idx)
-        val_dataset = Subset(dataset, val_idx)
+        train_val_dataset = Subset(dataset, train_val_idx)
         test_dataset = Subset(dataset, test_idx)
-        results = []
 
-        res = train_evaluate_mil(train_dataset, val_dataset, test_dataset, num_classes, arch=args.arch)
-        results.append(res)
+        splits = StratifiedKFold(n_splits=folds, shuffle=True, random_state=0)
+        results = []
+        for fold, (train_idx, val_idx) in tqdm(enumerate(splits.split(train_val_dataset, train_val_labels)), total=folds, desc="Cross-validation Progress"):
+            train_dataset = Subset(train_val_dataset, train_idx)
+            val_dataset = Subset(train_val_dataset, val_idx)
+
+            res = train_evaluate_mil(train_dataset, val_dataset, test_dataset, num_classes, arch=args.arch)
+            results.append(res)
         print("====================================")
         print(f'Final results averaged over {folds} folds for {dataset_name}')
         results_mean = {key: np.mean([result[key] for result in results]) for key in results[0].keys()}
