@@ -2,6 +2,8 @@
 #
 # This source code is licensed under the Apache License, Version 2.0
 # found in the LICENSE file in the root directory of this source tree.
+import time
+start = time.time()
 
 import argparse
 import logging
@@ -9,7 +11,10 @@ import math
 import os
 import sys
 from functools import partial
-import time
+# from ademamix import AdEMAMix
+from torch.distributed.elastic.multiprocessing.errors import record
+import torch.distributed as dist
+
 #from schedulefree import AdamWScheduleFree
 sys.path.append(".")
 
@@ -32,6 +37,8 @@ from dinov2.train.ssl_meta_arch import SSLMetaArch
 from dinov2.utils.config import setup
 from dinov2.utils.utils import CosineScheduler, smooth_rank_measure
 from fvcore.common.checkpoint import PeriodicCheckpointer
+
+print(f"Import time: {time.time()-start:.2f}s")
 
 torch.backends.cuda.matmul.allow_tf32 = True  # PyTorch 1.12 sets this to False by default
 logger = logging.getLogger("dinov2")
@@ -183,7 +190,7 @@ def do_train(cfg, model, resume=False):
 
     periodic_checkpointer = PeriodicCheckpointer(
         checkpointer,
-        period=3 * OFFICIAL_EPOCH_LENGTH,
+        period=2 * OFFICIAL_EPOCH_LENGTH,  # OFFICIAL_EPOCH_LENGTH is 500
         max_iter=max_iter,
         max_to_keep=3,
     )
@@ -258,6 +265,7 @@ def do_train(cfg, model, resume=False):
 
     batch_collection = []
     total_tokens_collected = 0 
+    rank = int(os.environ.get("RANK", 0))
 
     for data in metric_logger.log_every(
         data_loader,
@@ -319,45 +327,43 @@ def do_train(cfg, model, resume=False):
         metric_logger.update(last_layer_lr=last_layer_lr)
         metric_logger.update(current_batch_size=current_batch_size)
         metric_logger.update(total_loss=losses_reduced, **loss_dict_reduced)
+        if rank==0:
+            wandb.log(
+                {
+                    "lr": lr,
+                    "wd": wd,
+                    "mom": mom,
+                    "last_layer_lr": last_layer_lr,
+                    "current_batch_size": current_batch_size,
+                    "total_loss": losses_reduced,
+                    **loss_dict_reduced,
+                }
+            )
 
-        wandb.log(
-            {
-                "lr": lr,
-                "wd": wd,
-                "mom": mom,
-                "last_layer_lr": last_layer_lr,
-                "current_batch_size": current_batch_size,
-                "total_loss": losses_reduced,
-                **loss_dict_reduced,
-            }
-        )
-
-        # compute smooth rank measure
-
-        desired_tokens=2500
-        tokens_needed = desired_tokens - total_tokens_collected
-        batch_size = class_tokens.shape[0]  # Current batch size from class_tokens shape
+        # # compute smooth rank measure
+        # desired_tokens=2500
+        # tokens_needed = desired_tokens - total_tokens_collected
+        # batch_size = class_tokens.shape[0]  # Current batch size from class_tokens shape
         
-        if tokens_needed > 0 and iteration % 1000 < (int(desired_tokens/batch_size)+1):
-            # If the whole batch can be added without exceeding 1000 tokens
-            if batch_size <= tokens_needed:
-                batch_collection.append(class_tokens.detach())
-                total_tokens_collected += batch_size
-            else:
-                # Add only the required number of tokens from the batch
-                batch_collection.append(class_tokens.detach()[:tokens_needed, :])
-                total_tokens_collected += tokens_needed
+        # if tokens_needed > 0 and iteration % 1000 < (int(desired_tokens/batch_size)+1):
+        #     # If the whole batch can be added without exceeding 1000 tokens
+        #     if batch_size <= tokens_needed:
+        #         batch_collection.append(class_tokens.detach())
+        #         total_tokens_collected += batch_size
+        #     else:
+        #         # Add only the required number of tokens from the batch
+        #         batch_collection.append(class_tokens.detach()[:tokens_needed, :])
+        #         total_tokens_collected += tokens_needed
 
-            print(f"{tokens_needed} tokens needed, {total_tokens_collected }tokens collected")
-
-        # Once desired_tokens are collected, process them
-        if total_tokens_collected == desired_tokens:
-            embedding_matrix = torch.cat(batch_collection, dim=0)
-            smooth_rank = smooth_rank_measure(embedding_matrix)  # Assuming this function is defined elsewhere
-            wandb.log({"smooth_rank": smooth_rank})
-            # Reset for the next tokens
-            batch_collection = []
-            total_tokens_collected = 0
+        #     print(f"{tokens_needed} tokens needed, {total_tokens_collected }tokens collected")
+        # # Once desired_tokens are collected, process them
+        # if total_tokens_collected == desired_tokens:
+        #     embedding_matrix = torch.cat(batch_collection, dim=0)
+        #     smooth_rank = smooth_rank_measure(embedding_matrix)  # Assuming this function is defined elsewhere
+        #     wandb.log({"smooth_rank": smooth_rank})
+        #     # Reset for the next tokens
+        #     batch_collection = []
+        #     total_tokens_collected = 0
 
         if cfg.evaluation.eval_period_iterations > 0 and (iteration + 1) % cfg.evaluation.eval_period_iterations == 0:
             do_test(cfg, model, f"training_{iteration}")
@@ -368,10 +374,14 @@ def do_train(cfg, model, resume=False):
     metric_logger.synchronize_between_processes()
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
-
+@record
 def main(args):
     cfg = setup(args)
 
+    world_size = int(os.environ.get("WORLD_SIZE", 1))
+    rank = int(os.environ.get("RANK", 0))
+    setup_wandb(world_size,rank,entity="histo-collab", project="dinov2", name = args.name, mode="offline", config=args)
+    
     model = SSLMetaArch(cfg).to(torch.device("cuda"))
     # load pretrained model weights
     # model_weights = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14_reg')
@@ -394,10 +404,25 @@ def main(args):
 
     do_train(cfg, model, resume=not args.no_resume)
 
+def setup_wandb(world_size,rank,entity, project, name, mode, config):
+    if rank == 0:  # Initialize WandB only on the main process
+        wandb.init(
+            entity=entity,
+            project=project,
+            name=name,
+            mode=mode,
+            config=config
+        )
+
+    if world_size > 1:
+        dist.barrier()
 
 if __name__ == "__main__":
     args = get_args_parser(add_help=True).parse_args()
+    rank = int(os.environ.get("RANK", 0))
     name = args.name #+ str(time.time()).split(".")[0] if args.name != "debug" else args.name
     args.output_dir = os.path.join(args.output_dir, name)
-    wandb.init(entity="histo-collab", project="dinov2", name=name, mode="online", config=args)
+
     main(args)
+    if rank == 0:
+        wandb.finish()

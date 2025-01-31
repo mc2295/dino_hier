@@ -507,7 +507,7 @@ class SSLMetaArch(nn.Module):
                 ]
 
         # 2: run
-        _attn_bias, cat_inputs = fmha.BlockDiagonalMask.from_tensor_list(inputs_for_student_head_list)
+        _attn_bias, cat_inputs = fmha.attn_bias.BlockDiagonalMask.from_tensor_list(inputs_for_student_head_list)
         outputs_list = _attn_bias.split(self.student.dino_head(cat_inputs))
 
         # 3a: local crops cls tokens
@@ -573,17 +573,29 @@ class SSLMetaArch(nn.Module):
 
         if self.do_supervised_loss and iteration > self.supervised_loss_wait_iter and images["labels"].max() > -1:
             mask = images["labels"] != -1
+            labels = images["labels"].to(student_cls_tokens.device)
 
-            cls_output = self.student["supervised_head_0"](student_cls_tokens[mask])
+            masked_cls_tokens = student_cls_tokens[mask]
+            masked_labels = labels[mask]
+
+            cls_output = self.student.module.supervised_head_0(masked_cls_tokens) if hasattr(self.student, 'module') else self.student.supervised_head_0(masked_cls_tokens)
+
             supervised_loss = 0
-            for loss in self.supervised_losses[0]:
-                if isinstance(loss, losses.SupConLoss):
-                    supervised_loss += self.supervised_loss_weight * loss(student_cls_tokens[mask], images["labels"].to(cls_output.device)[mask])
-                else:
-                    supervised_loss += self.supervised_loss_weight * loss(cls_output, images["labels"].to(cls_output.device)[mask])
-                loss_accumulator += supervised_loss
-                loss_dict[str(loss.__class__).split(".")[-1].replace("'>","")] = supervised_loss / loss_scales
-    
+            for i,subloss in enumerate(self.supervised_losses):
+                if i==0:
+                    for loss in subloss:
+                        current_loss=loss(cls_output, masked_labels)
+                        supervised_loss += self.supervised_loss_weight * current_loss
+                        loss_accumulator += supervised_loss
+                        loss_dict[str(loss.__class__).split(".")[-1].replace("'>","")] = supervised_loss / loss_scales
+
+                elif i ==1:
+                    for loss in subloss:
+                        current_loss=loss(masked_cls_tokens, masked_labels)
+                        supervised_loss += self.supervised_loss_weight * current_loss
+                        loss_accumulator += supervised_loss
+                        loss_dict[str(loss.__class__).split(".")[-1].replace("'>","")] = supervised_loss / loss_scales
+
         if self.do_domain_loss:
             mask = images["domain_labels"] != -1  # should not be necessary as all samples have a domain
             cls_output = self.student["domain_head"](student_cls_tokens[mask])

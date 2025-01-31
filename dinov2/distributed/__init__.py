@@ -278,7 +278,7 @@ def enable(*, set_cuda_current_device: bool = True, overwrite: bool = False, all
     print(f"Local World Size: {os.environ.get('LOCAL_WORLD_SIZE')}")
 
     # Set a timeout for initialization
-    timeout = timedelta(seconds=60)
+    timeout = timedelta(seconds=300)
 
     print(f"CUDA is available: {torch.cuda.is_available()}")
     print(f"Number of CUDA devices: {torch.cuda.device_count()}")
@@ -288,7 +288,7 @@ def enable(*, set_cuda_current_device: bool = True, overwrite: bool = False, all
         print(f"  Device {i}: {torch.cuda.get_device_name(i)}")
     print(f"Local rank: {torch_env.local_rank}")
     try:
-        dist.init_process_group(backend="gloo", timeout=timeout)
+        dist.init_process_group(backend="nccl", timeout=timeout)
         print(f"Successfully initialized process group for rank {dist.get_rank()}")
     except Exception as e:
         print(f"Error initializing process group: {str(e)}")
