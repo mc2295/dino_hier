@@ -42,10 +42,12 @@ parser.add_argument(
     type=str,
 )
 
+parser.add_argument("--checkpoint_root", help="root of checkpoints", type=str)
+
 parser.add_argument(
     "--experiment_name",
     help="name of experiment",
-    default="nct_crc",
+    default="debug",
     type=str,
 )
 
@@ -65,23 +67,21 @@ parser.add_argument(
 
 parser.add_argument(
     "--image_path_train",
-    help="path to csv file", 
-    default="./dinov2/eval/miccai/nct_crc_train.csv",
+    help="path to csv file",
+    default="dinov2/eval/patch_level/splits/bm_train.csv",
     type=str,
 )
 
 parser.add_argument(
     "--image_path_test",
     help="path to csv file",
-    default="./dinov2/eval/miccai/nct_crc_test.csv",
+    default="dinov2/eval/patch_level/splits/bm_test.csv",
     type=str,
 )
 
 parser.add_argument(
-    "--run_path",
     "--model_path",
     help="path to run directory with models inside",
-    default="/home/icb/valentin.koch/dinov2/vits_fixed1708263536.3059368/eval",
     type=str,
 )
 
@@ -122,14 +122,18 @@ parser.add_argument(
 )
 
 
-def save_features_and_labels_individual(feature_extractor, dataloader, save_dir,dataset):
+def save_features_and_labels_individual(feature_extractor, dataloader, save_dir,dataset,model_name):
 
     if len(dataset)==len(list(Path(save_dir).glob("*.h5"))):
         print("features already extracted")
         return
     
     print("extracting features..")
-    os.makedirs(save_dir, exist_ok=True, mode=0o777)
+    try:
+        os.makedirs(save_dir, exist_ok=True, mode=0o777)
+    except PermissionError:
+        pass
+
     os.chmod(save_dir, 0o777)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -138,17 +142,24 @@ def save_features_and_labels_individual(feature_extractor, dataloader, save_dir,
 
         for images, labels, names in tqdm(dataloader):
             images = images.to(device)
-            batch_features = feature_extractor(images)
+            if model_name.lower()=="conch":
+                batch_features=feature_extractor.encode_image(images, proj_contrast=False, normalize=False)
+            else:
+                batch_features = feature_extractor(images)
 
             labels_np = labels.numpy()
 
             for img_name, img_features, img_label in zip(names, batch_features, labels_np):
                 h5_filename = os.path.join(save_dir, f"{img_name}.h5")
 
-                with h5py.File(h5_filename, "w") as hf:
-                    hf.create_dataset("features", data=img_features.cpu().numpy())
-                    hf.create_dataset("labels", data=img_label)
-                os.chmod(h5_filename, 0o777)
+                # check if file exists
+                if os.path.isfile(h5_filename):
+                    continue
+                else:
+                    with h5py.File(h5_filename, "w") as hf:
+                        hf.create_dataset("features", data=img_features.cpu().numpy())
+                        hf.create_dataset("labels", data=img_label)
+                    os.chmod(h5_filename, 0o777)
 
 
 def sort_key(path):
@@ -166,7 +177,7 @@ def main(args):
     df = pd.read_csv(image_paths)
     df_test = pd.read_csv(image_test_paths)
 
-    transform = get_transforms(model_name)
+    transform = get_transforms(model_name, model_path=args.model_path)
 
     # make sure encoding is always the same
 
@@ -187,10 +198,10 @@ def main(args):
 
     if model_name in ["owkin","resnet50","resnet50_full","remedis","imagebind"]:
         sorted_paths=[None]
-    elif model_name in ["retccl","ctranspath"]:
-        sorted_paths=[Path(args.run_path)]
+    elif model_name in ["retccl","ctranspath","uni","conch","dinobloom","dinobloom_s","dinobloom_b","dinobloom_l","dinobloom_g"]:
+        sorted_paths=[Path(args.model_path)]
     else:
-        sorted_paths = list(Path(args.run_path).rglob("*teacher_checkpoint.pth"))
+        sorted_paths = list(Path(args.model_path).rglob("*teacher_checkpoint.pth"))
 
     if len(sorted_paths)>1:
         sorted_paths = sorted(sorted_paths, key=sort_key)
@@ -201,17 +212,17 @@ def main(args):
         if checkpoint is not None:
             parent_dir=checkpoint.parent 
         else:
-            parent_dir = Path(args.run_path) / (model_name+"_baseline")
+            parent_dir = Path(args.model_path) / (model_name+"_baseline")
             
         print("loading checkpoint: ", checkpoint)
         feature_extractor = get_models(model_name, args.img_size, saved_model_path=checkpoint)
-        feature_dir = parent_dir / args.run_name
+        feature_dir = parent_dir / args.run_name / args.experiment_name
 
         train_dir = os.path.join(feature_dir, "train_data")
         test_dir = os.path.join(feature_dir, "test_data")
         
-        save_features_and_labels_individual(feature_extractor, train_dataloader, train_dir,train_dataset)
-        save_features_and_labels_individual(feature_extractor, test_dataloader, test_dir,test_dataset)
+        save_features_and_labels_individual(feature_extractor, train_dataloader, train_dir,train_dataset,model_name)
+        save_features_and_labels_individual(feature_extractor, test_dataloader, test_dir,test_dataset,model_name)
 
         train_data, train_labels, test_data, test_labels = get_data(train_dir, test_dir)
         print("data fully loaded")
@@ -243,6 +254,21 @@ def main(args):
         wandb.log(
             {"log_reg": log_reg, "umap_test": wandb.Image(umap_test), "umap_train": wandb.Image(umap_train)}, step=step
         )
+
+        # save metrics as csv
+        results = {
+            "knn_1/weighted_f1": knn_metrics["knn_1"]["weighted_f1"],
+            "knn_1/balanced_accuracy": knn_metrics["knn_1"]["balanced_accuracy"].item(),
+            "knn_20/weighted_f1": knn_metrics["knn_20"]["weighted_f1"],
+            "knn_20/balanced_accuracy": knn_metrics["knn_20"]["balanced_accuracy"].item(),
+            "log_reg/weighted_f1": log_reg["Weighted_F1"],
+            "log_reg/balanced_accuracy": log_reg["Balanced_Acc"].item(),
+        }
+        dataset_name = args.run_name
+        checkpoint_name = checkpoint.name if not checkpoint.name in ["teacher_checkpoint.pth", "pytorch_model.bin"] else checkpoint.parent.name
+        results_path = f"{args.checkpoint_root}/results_{dataset_name}_{args.model_name}_{Path(args.checkpoint_root).name}_{checkpoint_name}.csv"
+        pd.DataFrame(results, index=[0]).to_csv(results_path, index=False)
+        print(f"results saved to {results_path}")
 
 
 def process_file(file_name):
