@@ -29,11 +29,23 @@ if __name__ == "__main__":
 # /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/Cervix93 png
 # python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/Cervix93 --ext .png --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/cervix93.txt
 
+# /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/Cervix93_orig png
+# python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/Cervix93_orig --ext .png --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/cervix93_orig.txt
+
+# /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/APACS23 jpg
+# python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/APACS23 --ext .jpg --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/apacs23.txt
+
+# /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/APACS23_orig jpg
+# python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/APACS23_orig --ext .jpg --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/apacs23_orig.txt
+
 # /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/LBC jpg
 # python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/LBC --ext .jpg --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/lbc.txt
 
 # /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/CCEDD png
 # python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/CCEDD --ext .png --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/ccedd.txt
+
+# /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/CCEDD_orig png
+# python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/CCEDD_orig --ext .png --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/ccedd_orig.txt
 
 # /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/ISBI2014 png
 # python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/ISBI2014 --ext .png --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/isbi2014.txt
@@ -44,11 +56,23 @@ if __name__ == "__main__":
 # /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/CRIC png
 # python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/CRIC --ext .png --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/cric.txt
 
+# /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/CRIC_orig png
+# python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/CRIC_orig --ext .png --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/cric_orig.txt
+
 # /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/BTTFA png
 # python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/BTTFA --ext .png --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/bttfa.txt
+
+# /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/BTTFA_orig bmp
+# python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/BTTFA_orig --ext .bmp --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/bttfa_orig.txt
 
 # /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/RepoMedUNM jpg
 # python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/RepoMedUNM --ext .jpg --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/repomedunm.txt
 
 # /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/BMT JPG
 # python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/BMT --ext .JPG --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/bmt.txt
+
+# /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/TCT png
+# python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/TCT --ext .png --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/tct.txt
+
+# /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/TCT_cropped png
+# python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/TCT_cropped --ext .png --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/tct_cropped.txt
