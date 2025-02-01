@@ -52,3 +52,6 @@ if __name__ == "__main__":
 
 # /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/BMT JPG
 # python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/BMT --ext .JPG --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/bmt.txt
+
+# /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/TCT png
+# python scripts/create_txt_files.py --directory /lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/TCT --ext .png --output_file /lustre/groups/shared/users/peng_marr/DinoBloomv2/cytology_patches/tct.txt
