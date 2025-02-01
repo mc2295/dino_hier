@@ -11,6 +11,7 @@ from typing import Any, Callable, List, Optional, Tuple
 import random
 
 import numpy as np
+import pandas as pd
 import torch
 from PIL import Image
 from torchvision import transforms
@@ -121,15 +122,27 @@ class HemaAlternatingDataset(VisionDataset):
         target_transform: Optional[Callable] = None,
         domain_target_transform=None,
         shuffle: bool = False,
+        label_file: str = None,
+        label_confidence_cut: float = 0.7
         
     ) -> None:
         super().__init__(root, transforms, transform, target_transform)
         self.domain_target_transform = domain_target_transform
         patches_unlabeled = self.create_patch_list(Path(root)/"unlabeled")
         patches_labeled_i = self.create_patch_list(Path(root)/"labeled_i")
-        patches_labeled_ii = self.create_patch_list(Path(root)/"labeled_ii")
+        patches_labeled_ii=[]
 
-        all_patches=[patches_unlabeled,patches_labeled_i,patches_labeled_ii]
+        if label_file is not None:
+            df=pd.read_csv(label_file)
+            df = df[df['primary_class'] != '2-MISC']
+            self.label_file = df[df['primary_probability'] >= label_confidence_cut]
+            self.label_file.set_index('object_key', inplace=True)
+            more_labeled_patches,more_unlabeled_patches = self.split_dataset(Path(root)/"labeled_ii/beluga_train_patches.txt")
+            all_patches=[patches_unlabeled+more_unlabeled_patches,patches_labeled_i+more_labeled_patches]
+        else:
+            self.label_file = None
+            all_patches=[patches_unlabeled,patches_labeled_i]
+        
 
         self.patches=[a for a in all_patches if len(a)>1]
         self.dataset_sizes=[len(a) for a in self.patches]
@@ -150,8 +163,8 @@ class HemaAlternatingDataset(VisionDataset):
 
         target = self.get_target(filepath)
         domain_label = self.get_domain_label(filepath)
-        if self.transforms is not None:
 
+        if self.transforms is not None:
             image, target = self.transforms(image, target)
 
 
@@ -184,9 +197,40 @@ class HemaAlternatingDataset(VisionDataset):
         return patch
 
     def get_target(self, filepath) -> torch.Tensor:
-        # Get the label from the file path                
-        label = Path(filepath).parent.name
+        # Get the label from the file path
+        if "BELUGA" in filepath and self.label_file is not None:
+            split_path = str(filepath).split("/")
+            cell_id = f"{split_path[-2]}/{split_path[-1]}"
+            
+            # Error handling: return "no_label" if cell_id is not found
+            label = self.label_file['primary_class'].get(cell_id, "no_label")
+        else:
+            label = Path(filepath).parent.name
         return label
+
+    def split_dataset(self, file_paths_file):
+
+        # Read the file paths from the second file
+        with open(file_paths_file, 'r') as file:
+            file_paths = [line.strip() for line in file]
+
+        # Initialize lists to store file paths
+        labeled_files = []
+        unlabeled_files = []
+
+        # Loop through file paths and check if the respective cell_id is in df_filtered
+        for file_path in file_paths:
+            split_path = file_path.split('/')
+            cell_id = f"{split_path[-2]}/{split_path[-1]}"  # Extracting cell_id
+
+            if cell_id in self.label_file.index:
+                labeled_files.append(file_path)
+            else:
+                unlabeled_files.append(file_path)
+
+        # Return both lists
+        return labeled_files, unlabeled_files
+
 
     def __len__(self) -> int:
         # assert len(entries) == self.split.length

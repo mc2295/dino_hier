@@ -49,7 +49,7 @@ def _parse_dataset_str(dataset_str: str):
 
     for token in tokens[1:]:
         key, value = token.split("=")
-        assert key in ("root", "extra", "split", "shuffle")
+        assert key in ("root", "extra", "split", "shuffle","label_file","label_confidence_cut")
         if key=="shuffle":
             value=bool(int(value))
         kwargs[key] = value
