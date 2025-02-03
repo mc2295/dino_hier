@@ -243,6 +243,10 @@ def main(args):
         if "APL_AML" in args.dataset_path:
             # exclude prolymphocyte (only 1 sample) and unidentified
             class_to_label = {'artifact': 0, 'basophil': 1, 'blast': 2, 'eosinophil': 3, 'erythroblast': 4, 'lymphocyte': 5, 'lymphocyte_variant': 6, 'metamyelocyte': 7, 'monocyte': 8, 'myelocyte': 9, 'neutrophil_band': 10, 'neutrophil_segmented': 11, 'plasma': 12, 'promonocyte': 13, 'promyelocyte': 14, 'smudge': 15, 'thrombocyte_aggregated': 16, 'thrombocyte_giant': 17}
+        elif "raabin_wbc" in args.dataset_path:
+            class_to_label = {'basophil': 0, 'eosinophil': 1, 'lymphocyte': 2, 'monocyte': 3, 'neutrophil': 4}
+        elif "Acevedo_cropped" in args.dataset_path:
+            class_to_label = {'basophil': 0, 'eosinophil': 1, 'erythroblast': 2, 'lymphocyte_typical': 3, 'metamyelocyte': 4, 'monocyte': 5, 'myelocyte': 6, 'neutrophil_band': 7, 'neutrophil_segmented': 8, 'promyelocyte': 9}
         else:
             class_to_label = None
         dataset = PathImageDataset(args.dataset_path, transform=transform, filetype=args.filetype, img_size=(args.img_size,args.img_size), class_to_label=class_to_label)
