@@ -146,6 +146,9 @@ class PathImageDataset(Dataset):
         
         if class_to_label is None:
             class_to_label=create_label_mapping_from_paths(self.images)
+        
+        # filtering for images with valid classes
+        self.images = [i for i in self.images if Path(i).parent.name in class_to_label.keys()]
 
         self.class_to_label = class_to_label
         self.img_size=img_size
@@ -159,17 +162,16 @@ class PathImageDataset(Dataset):
         try:
             
             label = Path(image_path).parent.name
+            encoded_label = self.class_to_label[label]
+
             image = Image.open(image_path).convert("RGB").resize(self.img_size)
 
             if self.transform:
                 image = self.transform(image)
 
-            encoded_label = self.class_to_label[label]
-            
         except Exception as e:  # Using a more general exception class here
             print(f"An error occurred at {image_path}: {e}")
-            return self.__getitem__(i+1)
-
+            return None, None, None
 
         return image, encoded_label, Path(image_path).stem
 

@@ -3,7 +3,7 @@
 
 import argparse
 import os
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import h5py
@@ -239,7 +239,13 @@ def main(args):
         feature_extractor = get_models(model_name, args.img_size, saved_model_path=checkpoint)
         feature_dir = parent_dir / args.experiment_name / "features"
         
-        dataset = PathImageDataset(args.dataset_path, transform=transform, filetype=args.filetype,img_size=(args.img_size,args.img_size))
+        # set label dict 
+        if "APL_AML" in args.dataset_path:
+            # exclude prolymphocyte (only 1 sample) and unidentified
+            class_to_label = {'artifact': 0, 'basophil': 1, 'blast': 2, 'eosinophil': 3, 'erythroblast': 4, 'lymphocyte': 5, 'lymphocyte_variant': 6, 'metamyelocyte': 7, 'monocyte': 8, 'myelocyte': 9, 'neutrophil_band': 10, 'neutrophil_segmented': 11, 'plasma': 12, 'promonocyte': 13, 'promyelocyte': 14, 'smudge': 15, 'thrombocyte_aggregated': 16, 'thrombocyte_giant': 17}
+        else:
+            class_to_label = None
+        dataset = PathImageDataset(args.dataset_path, transform=transform, filetype=args.filetype, img_size=(args.img_size,args.img_size), class_to_label=class_to_label)
         dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
         save_features_and_labels(feature_extractor, dataloader, feature_dir,len(dataset),model_name)
@@ -248,6 +254,9 @@ def main(args):
         knn_folds=[]
 
         all_features=list(feature_dir.glob("*.h5"))
+        # for apl_aml dataset, remove the classes "unidentified" and "prolymphocyte" (only 1 sample)
+        if "APL_AML" in args.dataset_path:
+            all_features = [f for f in all_features if "UI" not in f.name.split('_')[0] and "PLY" not in f.name.split('_')[0]]
         
         data,labels, filenames=get_data(all_features)
         folds=create_stratified_folds(labels)
@@ -302,7 +311,10 @@ def main(args):
 
         # save the aggregated log_reg results as csv
         df_log_reg = pd.DataFrame(aggregated_log_reg, index=[0])
-        df_log_reg.to_csv(logreg_dir / "aggregated_log_reg_results.csv", index=False)
+        try:
+            df_log_reg.to_csv(logreg_dir / "aggregated_log_reg_results.csv", index=False)
+        except PermissionError:
+            pass
 
         num_folds = len(log_reg_folds)
         results = {
@@ -342,24 +354,21 @@ def process_file(file_name):
 
 
 def get_data(all_data):
-    # Define the directories for train, validation, and test data and labels
-
-    # Load training data into dictionaries
     features, labels, filenames = [], [], []
 
-    with ThreadPoolExecutor() as executor:
-        futures = [executor.submit(process_file, file_name) for file_name in all_data]
+    # Use ProcessPoolExecutor for CPU-heavy tasks
+    with ProcessPoolExecutor() as executor:
+        futures = {executor.submit(process_file, file_name): file_name for file_name in all_data}
 
-        for i, future in tqdm(enumerate(futures), desc="Loading data"):
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Loading data"):
             feature, label, filename = future.result()
             features.append(feature)
             labels.append(label)
             filenames.append(filename)
 
-    # Convert the lists to NumPy arrays
+    # Convert lists to NumPy arrays
     features = np.array(features)
     labels = np.array(labels).flatten()
-    # Flatten test_data
     features = features.reshape(features.shape[0], -1)  # Reshape to (n_samples, 384)
 
     return features, labels, filenames
@@ -416,7 +425,10 @@ def perform_knn(train_data, train_labels, test_data, test_labels, save_dir, file
         filename = f"{Path(save_dir).name}_logreg_labels_and_predictions_fold_{fold}.csv"
         file_path = os.path.join(save_dir, filename)
         # Speichern des DataFrames in der CSV-Datei
-        df_labels_to_save.to_csv(file_path, index=False)
+        try:
+            df_labels_to_save.to_csv(file_path, index=False)
+        except PermissionError:
+            pass
 
     return metrics_dict
 
@@ -532,14 +544,20 @@ def train_and_evaluate_logistic_regression(train_data, train_labels, test_data, 
 
     file_path = os.path.join(save_dir, filename)
     # Speichern des DataFrames in der CSV-Datei
-    df_labels_to_save.to_csv(file_path, index=False)
+    try:
+        df_labels_to_save.to_csv(file_path, index=False)
+    except PermissionError:
+        pass
 
     predicted_probabilities_df = pd.DataFrame(
         predicted_probabilities, columns=[f"Probability Class {i}" for i in range(predicted_probabilities.shape[1])]
     )
     predicted_probabilities_filename = f"{Path(save_dir).name}_predicted_probabilities_test.csv"
     predicted_probabilities_file_path = os.path.join(save_dir, predicted_probabilities_filename)
-    predicted_probabilities_df.to_csv(predicted_probabilities_file_path, index=False)
+    try: 
+        predicted_probabilities_df.to_csv(predicted_probabilities_file_path, index=False)
+    except PermissionError:
+        pass
 
     # Convert the report to a Pandas DataFrame for logging
     report_df = pd.DataFrame(report).transpose()
