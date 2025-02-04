@@ -40,23 +40,23 @@ submit_job scripts/run_patch_eval_fixed.sh \
 
 # Run patch eval with cross-validation
 submit_job scripts/run_patch_eval.sh \
-    "$MODEL_PATH" "$MODEL_ROOT" "$MODEL_NAME" "$EXP_NAME" \
+    "$MODEL_PATH" "$MODEL_ROOT" "$MODEL_NAME" "acevedo_eval" \
     "/lustre/groups/labs/marr/qscd01/datasets/armingruber/_Domains/Acevedo_cropped" \
     "dino_eval" "$PROJECT_PATH" "$ENV_NAME"
 
 submit_job scripts/run_patch_eval.sh \
-    "$MODEL_PATH" "$MODEL_ROOT" "$MODEL_NAME" "$EXP_NAME" \
+    "$MODEL_PATH" "$MODEL_ROOT" "$MODEL_NAME" "apl_cell_eval" \
     "/lustre/groups/shared/histology_data/hematology_data/APL_AML" \
     "apl_cell_eval" "$PROJECT_PATH" "$ENV_NAME"
 
 submit_job scripts/run_patch_eval.sh \
-    "$MODEL_PATH" "$MODEL_ROOT" "$MODEL_NAME" "$EXP_NAME" \
+    "$MODEL_PATH" "$MODEL_ROOT" "$MODEL_NAME" "raabin_eval" \
     "/lustre/groups/shared/histology_data/hematology_data/raabin_wbc" \
     "raabin_eval" "$PROJECT_PATH" "$ENV_NAME"
 
 # Run slide eval
-# submit_job scripts/run_mil_eval.sh "APL_AML_all" "WBCMIL" "$CKPT_PATH" "$MODEL_NAME" "$MODEL_ROOT"
+submit_job scripts/run_mil_eval.sh "APL_AML_all" "WBCMIL" "$CKPT_PATH" "$MODEL_NAME" "$MODEL_ROOT"
 
-# submit_job scripts/run_mil_eval.sh "AML_Hehr" "WBCMIL" "$CKPT_PATH" "$MODEL_NAME" "$MODEL_ROOT"
+submit_job scripts/run_mil_eval.sh "AML_Hehr" "WBCMIL" "$CKPT_PATH" "$MODEL_NAME" "$MODEL_ROOT"
 
-# submit_job scripts/run_mil_eval.sh "Beluga" "WBCMIL" "$CKPT_PATH" "$MODEL_NAME" "$MODEL_ROOT"
+submit_job scripts/run_mil_eval.sh "Beluga" "WBCMIL" "$CKPT_PATH" "$MODEL_NAME" "$MODEL_ROOT"
