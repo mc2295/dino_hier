@@ -16,6 +16,8 @@ import torch.nn.functional as F
 import torch.optim as optim
 import wandb
 import yaml
+from tqdm import tqdm 
+
 from PIL import Image
 from sklearn.metrics import balanced_accuracy_score, cohen_kappa_score, accuracy_score, classification_report, log_loss, roc_auc_score
 from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
@@ -64,7 +66,11 @@ def save_features_and_labels_Beluga(task_configs, save_dir, checkpoint, args):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    for patient,label in zip(patient_csv['Patient_ID'],patient_csv['Diagnosis']):
+    if len(list(save_dir.glob("*.h5"))) == len(patient_csv):
+        print("embeddings have already been extracted...")
+        return
+
+    for patient,label in tqdm(zip(patient_csv['Patient_ID'],patient_csv['Diagnosis'])):
         patient_path = Path(data_dir) / patient
         images = list(Path(patient_path).rglob(f'*{ext}'))
         images = [img for img in images if 'ipynb_checkpoints' not in str(img)]
@@ -76,23 +82,26 @@ def save_features_and_labels_Beluga(task_configs, save_dir, checkpoint, args):
 
         h5_filename = str(patient_path).replace(data_dir, str(save_dir)+'/') + '.h5'
 
-        embeddings_list = []
-        with torch.no_grad():
-            feature_extractor.eval()
-            for images in tqdm(dataloader):
-                images = images.to(device)
-                if args.model_name.lower()=="conch":
-                    batch_features=feature_extractor.encode_image(images, proj_contrast=False, normalize=False)
-                else:
-                    batch_features = feature_extractor(images)
-
-                embeddings_list.append(batch_features.cpu().numpy())
-                
-        if not embeddings_list:
-            print(f"No embeddings generated for patient: {patient}")
+        if os.path.isfile(h5_filename):  # check if file exists already
             continue
-        embeddings = np.concatenate(embeddings_list,axis=0)
-        save_h5(h5_filename, embeddings, label)
+        else:
+            embeddings_list = []
+            with torch.no_grad():
+                feature_extractor.eval()
+                for images in dataloader:
+                    images = images.to(device)
+                    if args.model_name.lower()=="conch":
+                        batch_features=feature_extractor.encode_image(images, proj_contrast=False, normalize=False)
+                    else:
+                        batch_features = feature_extractor(images)
+
+                    embeddings_list.append(batch_features.cpu().numpy())
+                
+            if not embeddings_list:
+                print(f"No embeddings generated for patient: {patient}")
+                continue
+            embeddings = np.concatenate(embeddings_list,axis=0)
+            save_h5(h5_filename, embeddings, label)
 
 
 def save_h5(h5_filename, embeddings, label):

@@ -249,6 +249,7 @@ def main(args):
             class_to_label = {'basophil': 0, 'eosinophil': 1, 'erythroblast': 2, 'lymphocyte_typical': 3, 'metamyelocyte': 4, 'monocyte': 5, 'myelocyte': 6, 'neutrophil_band': 7, 'neutrophil_segmented': 8, 'promyelocyte': 9}
         else:
             class_to_label = None
+
         dataset = PathImageDataset(args.dataset_path, transform=transform, filetype=args.filetype, img_size=(args.img_size,args.img_size), class_to_label=class_to_label)
         dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
@@ -258,9 +259,9 @@ def main(args):
         knn_folds=[]
 
         all_features=list(feature_dir.glob("*.h5"))
-        # for apl_aml dataset, remove the classes "unidentified" and "prolymphocyte" (only 1 sample)
-        if "APL_AML" in args.dataset_path:
-            all_features = [f for f in all_features if "UI" not in f.name.split('_')[0] and "PLY" not in f.name.split('_')[0]]
+        all_samples = [f.stem for f in dataset.images]
+        all_features = [f for f in all_features if f.stem in all_samples]
+        print("number of samples for classification task: ", len(all_features))
         
         data,labels, filenames=get_data(all_features)
         folds=create_stratified_folds(labels)
