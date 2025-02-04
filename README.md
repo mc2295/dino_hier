@@ -15,11 +15,15 @@ conda install numpy pandas h5py matplotlib wandb umap-learn transformers
 pip install timm einops ftfy regex
 ```
 
+
+1. Evaluation
+2. eval all checkpoints of one run on the Acevedo dataset, e.g., by running
+
+```bash
+python dinov2/eval/general_patch_eval.py --model_path /lustre/groups/shared/users/peng_marr/DinoBloomv2/superbloom/vitg_8_new_supcon/ --dataset_path /lustre/groups/labs/marr/qscd01/datasets/armingruber/_Domains/Acevedo_cropped/ --model_name dinov2_vitg14 --experiment_name superbloom_g
 ```
 
-```
-
-## Evaluation
+adapt path and env name to your setting in `scripts/run_all_evals.sh` and run to eval on all tasks
 
 ### Patch-level evaluation
 
@@ -59,6 +63,22 @@ python dinov2/eval/slide_level/eval_mil.py --dataset APL_AML_all --arch WBCMIL -
 
 ```
 
+## Model training
+
+env requirements for training
+onda install -c fvcore -c iopath -c conda-forge fvcorescripts at `/ictstr01/groups/shared/users/peng_marr/DinoBloomv2/scripts/train_2.sh`
+
+```bash
+torchrun --nproc_per_node=2 dinov2/train/train.py --name "vitl_3M_350k_bs416_0.1ce+new_supcon_mlp_rbc" --output_dir "/lustre/groups/shared/users/peng_marr/DinoBloomv2" --config-file /lustre/groups/shared/users/peng_marr/DinoBloomv2/configs/custom_2_alternating.yaml student.arch=dinov2_vitl14
+```
+
+single gpu training
+
+```bash
+python dinov2/train/train.py --name <run-name> --output_dir /lustre/groups/shared/users/peng_marr/DinoBloomv2 --config-file /lustre/groups/shared/users/peng_marr/DinoBloomv2/configs/custom_2_alternating.yaml student.arch=dinov2_vitl14
+```
+```
+
 ## ToDos
 
 * [ ] re-run all evals and collect commands for all
@@ -90,4 +110,4 @@ python dinov2/eval/slide_level/eval_mil.py --dataset APL_AML_all --arch WBCMIL -
     * [ ] g
   * [ ] vits_3M_350k_bs416_0.1ce+new_supcon_mlp_rbc 7999
   * [ ] vits_3M_350k_bs416_0.1ce+supcon_mlp_rbc 4999
-* [ ] implement Transformer for MIL eval and check whether results are more consistent
+* [X] implement Transformer for MIL eval and check whether results are more consistent
