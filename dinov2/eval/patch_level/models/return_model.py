@@ -40,7 +40,11 @@ def get_models(modelname, image_size, saved_model_path=None):
         model = get_uni(saved_model_path)
     elif modelname.lower() == "conch":
         model= get_conch(saved_model_path)
-
+    
+    elif modelname.lower() == "conchv1.5":
+        from dinov2.eval.patch_level.models.conch_v1_5 import build_conch, CONCHConfig
+        model, _ = build_conch(CONCHConfig())
+        
     # --- vision foundation models 
     elif modelname.lower() == "resnet50":
         model = get_res50()
@@ -65,14 +69,34 @@ def get_models(modelname, image_size, saved_model_path=None):
     elif modelname.lower() in ["dinov2_vits14_classifier","dinov2_vitb14_classifier","dinov2_vitl14_classifier","dinov2_vitg14_classifier"]:
         model = get_dino_student_classifier(saved_model_path, modelname)
 
+    elif modelname.lower() in ["dinov2_vitl16"]:
+        from dinov2.eval.patch_level.models.dinov2 import vit_large
+        model = vit_large(block_chunks=0, init_values=1.0e-05)
+
+        pretrained = torch.load(saved_model_path, map_location=torch.device("cpu"))
+        # make correct state dict for loading
+        new_state_dict = {}
+        for key, value in pretrained["teacher"].items():
+            if "dino_head" in key or "ibot_head" in key:
+                pass
+            else:
+                new_key = key.replace("backbone.", "")
+                new_state_dict[new_key] = value
+        # change shape of pos_embed
+        num_tokens=int(1+(image_size/16)**2)
+        input_dims = {
+            "dinov2_vits16": 384,
+            "dinov2_vitb16": 768,
+            "dinov2_vitl16": 1024,
+            "dinov2_vitg16": 1536,
+        }
+        pos_embed = nn.Parameter(torch.zeros(1, num_tokens, input_dims[modelname.replace("_reg","")]))
+        model.pos_embed = pos_embed
+        # load state dict
+        model.load_state_dict(new_state_dict, strict=True)
+
     elif modelname.lower() == "vim_finetuned":
         model = get_vim_finetuned(saved_model_path)
-    
-    elif modelname.lower() == "uni":
-        model = get_uni(saved_model_path)
-
-    elif modelname.lower() == "conch":
-        model= get_conch(saved_model_path)
         
     else: 
         raise ValueError(f"Model {modelname} not found")
@@ -175,7 +199,7 @@ def get_uni(saved_model_path):
 
 def get_conch(model_path):
     from conch.open_clip_custom import create_model_from_pretrained 
-    model, _ = create_model_from_pretrained("conch_ViT-B-16", checkpoint_path=os.path.join(model_path, "pytorch_model.bin"))
+    model, _ = create_model_from_pretrained("conch_ViT-B-16", checkpoint_path=str(model_path))
     return model
 
 
@@ -253,7 +277,7 @@ def get_transforms(model_name,image_size=224, model_path=None):
     mean = (0.485, 0.456, 0.406)
     std = (0.229, 0.224, 0.225)
 
-    if model_name.lower() in ["ctranspath", "resnet50", "simclr_lung", "beit_fb", "resnet50_full", "uni", "conch"]:
+    if model_name.lower() in ["ctranspath", "resnet50", "simclr_lung", "beit_fb", "resnet50_full", "uni", "conch", "conchv1.5"]:
         size = 224
     elif model_name.lower() == "owkin":
         image_processor = AutoImageProcessor.from_pretrained("owkin/phikon")
@@ -291,7 +315,8 @@ def get_transforms(model_name,image_size=224, model_path=None):
         "dinobloom_s",
         "dinobloom_b",
         "dinobloom_l",
-        "dinobloom_g"
+        "dinobloom_g",
+        "dinov2_vitl16",
     ]:
         size = image_size
     elif "sam" in model_name.lower():
@@ -323,7 +348,10 @@ def get_transforms(model_name,image_size=224, model_path=None):
 
     if model_name.lower() == "conch":
         from conch.open_clip_custom import create_model_from_pretrained 
-        _ , preprocess_transforms = create_model_from_pretrained("conch_ViT-B-16", checkpoint_path=os.path.join(model_path,"pytorch_model.bin"))
+        _ , preprocess_transforms = create_model_from_pretrained("conch_ViT-B-16", checkpoint_path=str(model_path))
+    elif model_name.lower() == "conchv1.5":
+        from dinov2.eval.patch_level.models.conch_v1_5 import build_conch, CONCHConfig
+        _, preprocess_transforms = build_conch(CONCHConfig())
 
     return preprocess_transforms
 

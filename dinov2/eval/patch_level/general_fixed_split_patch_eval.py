@@ -196,9 +196,9 @@ def main(args):
         config=args
     )
 
-    if model_name in ["owkin","resnet50","resnet50_full","remedis","imagebind"]:
+    if model_name in ["owkin","resnet50","resnet50_full","remedis","imagebind", "conchv1.5"]:
         sorted_paths=[None]
-    elif model_name in ["retccl","ctranspath","uni","conch","dinobloom","dinobloom_s","dinobloom_b","dinobloom_l","dinobloom_g"]:
+    elif model_name in ["retccl", "ctranspath", "uni", "conch", "conchv1.5", "dinobloom_s", "dinobloom_b", "dinobloom_l", "dinobloom_g"]:
         sorted_paths=[Path(args.model_path)]
     else:
         sorted_paths = list(Path(args.model_path).rglob("*teacher_checkpoint.pth"))
@@ -211,6 +211,8 @@ def main(args):
     for checkpoint in sorted_paths:
         if checkpoint is not None:
             parent_dir=checkpoint.parent 
+        elif checkpoint is None and args.checkpoint_root is not None:
+            parent_dir = Path(args.checkpoint_root)
         else:
             parent_dir = Path(args.model_path) / (model_name+"_baseline")
             

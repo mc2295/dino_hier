@@ -79,7 +79,7 @@ parser.add_argument(
 parser.add_argument(
     "--model_path",
     help="path to run directory with models inside",
-    default="/ictstr01/groups/shared/users/peng_marr/DinoBloomv2/vits_sophia_debug/eval/",
+    default=None,
     type=str,
 )
 
@@ -145,7 +145,7 @@ def save_features_and_labels(feature_extractor, dataloader, save_dir, dataset_le
 
         for images, labels, names in tqdm(dataloader):
             images = images.to(device)
-            if model_name.lower()=="conch":
+            if model_name.lower() == "conch":
                 batch_features=feature_extractor.encode_image(images, proj_contrast=False, normalize=False)
             else:
                 batch_features = feature_extractor(images)
@@ -217,8 +217,10 @@ def main(args):
 
     if model_name in ["owkin", "resnet50", "resnet50_full", "remedis", "imagebind"]:
         sorted_paths=[None]
-    elif model_name in ["retccl", "ctranspath", "uni", "conch", "dinobloom_s", "dinobloom_b", "dinobloom_l", "dinobloom_g"]:
+    elif model_name in ["retccl", "ctranspath", "uni", "conch", "conchv1.5", "dinobloom_s", "dinobloom_b", "dinobloom_l", "dinobloom_g"]:
         sorted_paths=[Path(args.model_path)]
+    elif model_name in ["dinov2_vits14", "dinov2_vitb14", "dinov2_vitl14", "dinov2_vitg14"] and args.model_path is None:
+        sorted_paths = [None]
     else:
         sorted_paths = list(Path(args.model_path).rglob("*teacher_checkpoint.pth"))
 
@@ -227,11 +229,11 @@ def main(args):
     if args.evaluate_untrained_baseline:
         sorted_paths.insert(0, None)
 
-    
-
     for checkpoint in sorted_paths:
         if checkpoint is not None:
             parent_dir=checkpoint.parent 
+        elif checkpoint is None and args.checkpoint_root is not None:
+            parent_dir = Path(args.checkpoint_root)
         else:
             parent_dir = Path(args.model_path) / (model_name+"_baseline")
             
@@ -248,6 +250,7 @@ def main(args):
         elif "Acevedo_cropped" in args.dataset_path:
             class_to_label = {'basophil': 0, 'eosinophil': 1, 'erythroblast': 2, 'lymphocyte_typical': 3, 'metamyelocyte': 4, 'monocyte': 5, 'myelocyte': 6, 'neutrophil_band': 7, 'neutrophil_segmented': 8, 'promyelocyte': 9}
         else:
+            print("Dataset is not APL/AML, RaaBin or Acevedo_cropped. No class_to_label mapping available.")
             class_to_label = None
 
         dataset = PathImageDataset(args.dataset_path, transform=transform, filetype=args.filetype, img_size=(args.img_size,args.img_size), class_to_label=class_to_label)
