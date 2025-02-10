@@ -17,6 +17,7 @@ submit_job() {
         --job-name="$EXP_NAME" \
         --partition=gpu_p \
         --qos=gpu_normal \
+        --mem=240G \
         --time=8:00:00 \
         --nice=10000 \
         --gres=gpu:1 \
