@@ -18,7 +18,7 @@ submit_job() {
         --partition=gpu_p \
         --qos=gpu_normal \
         --mem=240G \
-        --time=8:00:00 \
+        --time=12:00:00 \
         --nice=10000 \
         --gres=gpu:1 \
         "$@"
@@ -66,11 +66,36 @@ for model_info in "${MODELS[@]}"; do
         "$MODEL_PATH" "$MODEL_ROOT" "$MODEL_NAME" "raabin_eval" \
         "/lustre/groups/shared/histology_data/hematology_data/raabin_wbc" \
         "raabin_eval" "$PROJECT_PATH" "$ENV_NAME"
-    
+
+    # (d) SIPaKMeD
+    submit_job scripts/run_patch_eval.sh \
+        "$MODEL_PATH" "$MODEL_ROOT" "$MODEL_NAME" "sipakmed_eval" \
+        "/lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/SIPaKMeD" \
+        "sipakmed_eval" "$PROJECT_PATH" "$ENV_NAME"
+
+    # (e) HiCervix
+    submit_job scripts/run_patch_eval.sh \
+        "$MODEL_PATH" "$MODEL_ROOT" "$MODEL_NAME" "hicervix_eval" \
+        "/lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/HiCervix_class_based" \
+        "hicervix_eval" "$PROJECT_PATH" "$ENV_NAME"
+
+    # (f) ComparisonDetector
+    submit_job scripts/run_patch_eval.sh \
+        "$MODEL_PATH" "$MODEL_ROOT" "$MODEL_NAME" "comparisondetector_eval" \
+        "/lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/ComparisonDetector" \
+        "comparisondetector_eval" "$PROJECT_PATH" "$ENV_NAME"
+
+    # (g) LBC
+    submit_job scripts/run_patch_eval.sh \
+        "$MODEL_PATH" "$MODEL_ROOT" "$MODEL_NAME" "lbc_eval" \
+        "/lustre/groups/labs/marr/qscd01/datasets/papsmear_dataset_processed/LBC" \
+        "lbc_eval" "$PROJECT_PATH" "$ENV_NAME"
+
     # === Slide Evaluation (MIL) ===
     
     submit_job scripts/run_mil_eval.sh "APL_AML_all" "WBCMIL" "$CKPT_PATH" "$MODEL_NAME" "$MODEL_ROOT"
     submit_job scripts/run_mil_eval.sh "AML_Hehr" "WBCMIL" "$CKPT_PATH" "$MODEL_NAME" "$MODEL_ROOT"
     submit_job scripts/run_mil_eval.sh "Beluga" "WBCMIL" "$CKPT_PATH" "$MODEL_NAME" "$MODEL_ROOT"
+    submit_job scripts/run_mil_eval.sh "DresdenBMC" "WBCMIL" "$CKPT_PATH" "$MODEL_NAME" "$MODEL_ROOT"
     
 done

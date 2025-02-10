@@ -6,6 +6,7 @@ import os
 import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+import sys
 
 import h5py
 import numpy as np
@@ -26,7 +27,7 @@ from tqdm import tqdm
 import dinov2.eval.slide_level.models.aggregators as models
 #from dinov2.eval.patch_level.dataset import PathImageDataset
 #from dinov2.eval.patch_level.general_patch_eval import save_features_and_labels
-from dinov2.eval.slide_level.extract_feature_Beluga import save_features_and_labels_Beluga
+from dinov2.eval.slide_level.extract_feature_Beluga import save_features_and_labels_Beluga, save_features_and_labels_DresdenBMC
 from dinov2.eval.patch_level.models.return_model import (get_models,
                                                          get_transforms)
 
@@ -91,7 +92,7 @@ def get_eval_metrics(
 
 
 def train_evaluate_mil(
-        train_data, val_data, test_data, num_classes,
+        train_data, val_data, test_data, num_classes, update_every=20,
         num_epochs = 150, random_state=0, dropout=0.25, n_heads=1, prefix="", wandb=False, arch="ABMIL"
     ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -125,13 +126,16 @@ def train_evaluate_mil(
     # for epoch in tqdm(range(num_epochs), desc=f"Training {arch}"):
     for epoch in tqdm(range(num_epochs), desc="Training Progress", unit="epoch"):
         model.train()
+        count_step = 0
+        optimizer.zero_grad()
         for inputs, labels in train_loader:
             outputs = model(inputs.to(device))
             loss = criterion(outputs, labels.to(device))
-            
-            optimizer.zero_grad()
             loss.backward()
-            optimizer.step()
+            count_step += 1
+            if (count_step % update_every == 0) or (count_step == len(train_loader)):
+                optimizer.step()
+                optimizer.zero_grad()
         scheduler.step()
 
         # Validate the model
@@ -301,6 +305,24 @@ def eval_task(dataset_name, feature_dir, folds):
 
             return features, label
 
+    class H5Dataset_modified(Dataset):
+        def __init__(self, root, task):
+            self.data = list(Path(root).rglob('**/*.h5'))
+            self.task = task
+
+            # print('Loading labels ...')
+            # self.labels = [h5_file.parent.parent.name for h5_file in self.data]
+
+        def __len__(self):
+            return len(self.data)
+
+        def __getitem__(self, idx):
+            with h5py.File(self.data[idx], 'r') as hf:
+                features = hf['features'][()]
+                label = hf[self.task][()]
+
+            return features, label
+
     if dataset_name == 'AML_Hehr':
         # 5-fold cross val on training data
         train_val_dataset = H5Dataset(Path(feature_dir) / 'train')
@@ -353,7 +375,7 @@ def eval_task(dataset_name, feature_dir, folds):
         for keys, values in results_mean.items():
             print(f"{keys.split('/')[-1]: <12}: {np.round(values, 4):.4f} ± {np.round(results_std[keys], 4):.4f}")
 
-    elif dataset_name == 'Beluga': # Considering only one fold training-testing
+    elif dataset_name == 'Beluga': 
         dataset = H5Dataset(Path(feature_dir))
         task_csv = pd.read_csv(task_configs[dataset_name]['csv'])
         train_val_patients = task_csv[task_csv['Cohort'] != 'Test']['Patient_ID'].values
@@ -383,6 +405,45 @@ def eval_task(dataset_name, feature_dir, folds):
         for keys, values in results_mean.items():
             print(f"{keys.split('/')[-1]: <12}: {np.round(values, 4):.4f} ± {np.round(results_std[keys], 4):.4f}")
 
+    elif dataset_name == 'DresdenBMC': 
+        task_csv = pd.read_csv(task_configs[dataset_name]['csv'])
+        task_csv['Patient_ID'] = task_csv['Patient_ID'].astype(str)
+        tasks = ['m_subtype', 'npm1_status']
+        results = {}
+        for task in tasks:
+            dataset = H5Dataset_modified(Path(feature_dir),task=task)
+            train_df, test_df = train_test_split(task_csv, test_size=0.2, stratify=task_csv[task], random_state=0)
+            train_val_patients = train_df['Patient_ID'].values
+            
+            patient_to_label = dict(zip(task_csv['Patient_ID'], task_csv[task]))
+            train_val_labels = [patient_to_label[Path(h5_file).stem] for i, h5_file in enumerate(dataset.data) if Path(h5_file).stem in train_val_patients]
+            test_patients = test_df['Patient_ID'].values
+
+            num_classes = len(task_configs[dataset_name][task]['label_dict'])
+
+            train_val_idx = [i for i, h5_file in enumerate(dataset.data) if Path(h5_file).stem in train_val_patients]
+            test_idx = [i for i, h5_file in enumerate(dataset.data) if Path(h5_file).stem in test_patients]
+
+            train_val_dataset = Subset(dataset, train_val_idx)
+            test_dataset = Subset(dataset, test_idx)
+
+            splits = StratifiedKFold(n_splits=folds, shuffle=True, random_state=0)
+
+            res_array = []
+            for fold, (train_idx, val_idx) in tqdm(enumerate(splits.split(train_val_dataset, train_val_labels)), total=folds, desc="Cross-validation Progress"):
+                train_dataset = Subset(train_val_dataset, train_idx)
+                val_dataset = Subset(train_val_dataset, val_idx)
+
+                res = train_evaluate_mil(train_dataset, val_dataset, test_dataset, num_classes, arch=args.arch)
+                res_array.append(res)
+            print("====================================")
+            print(f'Final results averaged over {folds} folds for {dataset_name}, {task}')
+            results_mean = {key: np.mean([result[key] for result in res_array]) for key in res_array[0].keys()}
+            results_std = {key: np.std([result[key] for result in res_array]) for key in res_array[0].keys()}
+            for keys, values in results_mean.items():
+                print(f"{keys.split('/')[-1]: <12}: {np.round(values, 4):.4f} ± {np.round(results_std[keys], 4):.4f}")
+            results[task] = res_array
+
     else:  
         raise NotImplementedError(f"Dataset {dataset_name} not implemented")
 
@@ -396,7 +457,7 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', 
                         type=str, 
                         help='name of the dataset for evaluation (options: AML_Hehr, APL_AML_all, Beluga))',
-                        default='AML_Hehr', choices=['AML_Hehr', 'APL_AML_all', 'Beluga'])
+                        default='AML_Hehr', choices=['AML_Hehr', 'APL_AML_all', 'Beluga', 'DresdenBMC'])
     parser.add_argument('--checkpoint', 
                         type=str, default=None,
                         help='checkpoint to evaluate')  
@@ -462,6 +523,8 @@ if __name__ == "__main__":
         if args.feature_dir is None or args.feature_extract==1:
             if args.dataset == 'Beluga':
                 save_features_and_labels_Beluga(task_configs,feature_dir,checkpoint,args)
+            elif args.dataset == 'DresdenBMC':
+                save_features_and_labels_DresdenBMC(task_configs,feature_dir,checkpoint,args)
             else:
                 save_features_and_labels(task_configs[args.dataset]['root'], feature_dir, args.num_samples, ext=task_configs[args.dataset]['ext'])
 
@@ -469,6 +532,28 @@ if __name__ == "__main__":
             sorted_paths = sorted(sorted_paths, key=sort_key)
 
         results = eval_task(args.dataset, feature_dir, folds=folds)
+        if args.dataset == 'DresdenBMC':
+            for k_task,res in results.items():
+                results_mean = {key: np.mean([result[key] for result in res]) for key in res[0].keys()}
+                results_std = {key: np.std([result[key] for result in res]) for key in res[0].keys()}
+
+                print("====================================")
+                print(f'Final results averaged over {folds} folds for {args.dataset}, {k_task}')
+                for keys, values in results_mean.items():
+                    print(f"{keys.split('/')[-1]: <12}: {np.round(values, 4):.4f} ± {np.round(results_std[keys], 4):.4f}")
+                # add mean and std dev to results dataframe
+                for k in range(len(res)):
+                    res[k]['fold'] = k
+                results_mean['fold'] = 'mean'
+                results_std['fold'] = 'std'
+
+                res.append(results_mean)
+                res.append(results_std)
+
+                results_path = f"{args.checkpoint_root}/results_{args.dataset}_{args.arch}_{args.model_name}_{Path(args.checkpoint_root).name}_{checkpoint_name}_{k_task}.csv"
+                pd.DataFrame(res).to_csv(results_path)
+                print(f"results saved to {results_path}")
+            sys.exit()
 
         results_mean = {key: np.mean([result[key] for result in results]) for key in results[0].keys()}
         results_std = {key: np.std([result[key] for result in results]) for key in results[0].keys()}

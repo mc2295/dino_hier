@@ -249,8 +249,16 @@ def main(args):
             class_to_label = {'basophil': 0, 'eosinophil': 1, 'lymphocyte': 2, 'monocyte': 3, 'neutrophil': 4}
         elif "Acevedo_cropped" in args.dataset_path:
             class_to_label = {'basophil': 0, 'eosinophil': 1, 'erythroblast': 2, 'lymphocyte_typical': 3, 'metamyelocyte': 4, 'monocyte': 5, 'myelocyte': 6, 'neutrophil_band': 7, 'neutrophil_segmented': 8, 'promyelocyte': 9}
+        elif "ComparisonDetector" in args.dataset_path:
+            class_to_label = {"actinomyces": 0,"agc": 1,"asch": 2,"ascus": 3,"candida": 4,"flora": 5,"herps": 6,"hsil": 7,"lsil": 8,"scc": 9,"trichomonas": 10}
+        elif "SIPaKMeD" in args.dataset_path:
+            class_to_label = {"im_Dyskeratotic": 0, "im_Koilocytotic": 1, "im_Metaplastic": 2, "im_Parabasal": 3, "im_Superficial-Intermediate": 4}
+        elif "HiCervix_class_based" in args.dataset_path:
+            class_to_label = {"ACTINO": 0, "ADC-EMC": 1, "AGC-EMC-NOS": 2, "ASC-H": 3, "CC": 4, "FUNGI": 5, "HSIL": 6, "MPC": 7, "RPC": 8, "ADC": 9, "AGC": 10, "AGC-FN": 11, "ASC-US": 12, "ECC": 13, "HCG": 14, "HSV": 15, "Normal": 16, "SCC": 17, "ADC-ECC": 18, "AGC-ECC-NOS": 19, "AGC-NOS": 20, "Atrophy": 21, "EMC": 22, "LSIL": 23, "PG": 24, "TRI": 25}
+        elif "LBC" in args.dataset_path:
+            class_to_label = {"HSIL": 0, "LSIL": 1, "N": 2, "SCC": 3}
         else:
-            print("Dataset is not APL/AML, RaaBin or Acevedo_cropped. No class_to_label mapping available.")
+            print("Dataset is not APL/AML, RaaBin, Acevedo_cropped, or pap-smear images. No class_to_label mapping available.")
             class_to_label = None
 
         dataset = PathImageDataset(args.dataset_path, transform=transform, filetype=args.filetype, img_size=(args.img_size,args.img_size), class_to_label=class_to_label)
@@ -430,7 +438,7 @@ def perform_knn(train_data, train_labels, test_data, test_labels, save_dir, file
         # wandb.log({"Classification Report": wandb.Table(dataframe=report_df)})
 
         df_labels_to_save = pd.DataFrame({"filename": filenames, "label": test_labels, "prediction": test_predictions})
-        filename = f"{Path(save_dir).name}_logreg_labels_and_predictions_fold_{fold}.csv"
+        filename = f"{Path(save_dir).name}_knn_labels_and_predictions_fold_{fold}_n{n_neighbors}.csv"
         file_path = os.path.join(save_dir, filename)
         # Speichern des DataFrames in der CSV-Datei
         try:
