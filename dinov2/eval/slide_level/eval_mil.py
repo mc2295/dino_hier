@@ -118,24 +118,28 @@ def train_evaluate_mil(
     model = models.__dict__[arch](input_dim=in_dim, num_classes=num_classes)
     model = model.to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=0.0001, weight_decay=1.0e-05)
+    optimizer = optim.AdamW(model.parameters(), lr=0.0001)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
+    #scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=5, min_lr=2e-6)
 
     # Train the model
     best_val_loss, best_model_weights = 1000, None
     # for epoch in tqdm(range(num_epochs), desc=f"Training {arch}"):
     for epoch in tqdm(range(num_epochs), desc="Training Progress", unit="epoch"):
         model.train()
+        train_loss = 0
         count_step = 0
         optimizer.zero_grad()
         for inputs, labels in train_loader:
             outputs = model(inputs.to(device))
             loss = criterion(outputs, labels.to(device))
             loss.backward()
+            train_loss += loss.item()
             count_step += 1
             if (count_step % update_every == 0) or (count_step == len(train_loader)):
                 optimizer.step()
                 optimizer.zero_grad()
+        train_loss /= len(train_loader)
         scheduler.step()
 
         # Validate the model
@@ -145,12 +149,12 @@ def train_evaluate_mil(
             for inputs, labels in val_loader:
                 outputs = model(inputs.to(device))
                 val_loss += criterion(outputs, labels.to(device)).item()
-            val_loss /= len(val_loader)
+        val_loss /= len(val_loader)
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_model_weights = model.state_dict()      
-
-        tqdm.write(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}, Validation Loss: {val_loss:.4f}')
+        #scheduler.step(val_loss)
+        tqdm.write(f'Epoch [{epoch+1}/{num_epochs}], Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}')
         
     # Test the model
     model.load_state_dict(best_model_weights)
