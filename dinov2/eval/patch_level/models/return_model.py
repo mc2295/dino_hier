@@ -272,7 +272,7 @@ def get_imagebind(pretrained=True):
 def multiply_by_255(img):
     return img * 255
 
-def get_transforms(model_name,image_size=224, model_path=None):
+def get_transforms(model_name,image_size=224, saved_model_path=None):
     # from imagenet, leave as is
     mean = (0.485, 0.456, 0.406)
     std = (0.229, 0.224, 0.225)
@@ -348,7 +348,7 @@ def get_transforms(model_name,image_size=224, model_path=None):
 
     if model_name.lower() == "conch":
         from conch.open_clip_custom import create_model_from_pretrained 
-        _ , preprocess_transforms = create_model_from_pretrained("conch_ViT-B-16", checkpoint_path=str(model_path))
+        _ , preprocess_transforms = create_model_from_pretrained("conch_ViT-B-16", checkpoint_path=str(saved_model_path))
     elif model_name.lower() == "conchv1.5":
         from dinov2.eval.patch_level.models.conch_v1_5 import build_conch, CONCHConfig
         _, preprocess_transforms = build_conch(CONCHConfig())
