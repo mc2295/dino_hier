@@ -54,14 +54,22 @@ class HemaStandardDataset(VisionDataset):
         self.domain_target_transform = domain_target_transform
 
         all_dataset_files = Path(root).glob("*.txt")
+        name_datasets = ['bm_train_patches.txt', 'mll_mil_train_patches.txt', 'matek_patches.txt', 'raabin_train_patches.txt', 
+                            'warthog_patches.txt', 'lisc_refactor_patches.txt', 'ssl_seg_patches_all.txt', 'chula_patches.txt',
+                            'bccd_patches.txt', 'blood_cell_detection_kaggle_patches.txt', 'nuclick_hema_patches.txt',
+                            'marr_mll_patches.txt']
+        dataset_list = {root + '/' + i for i in name_datasets}
 
         for dataset_file in all_dataset_files:
             print("Loading ", dataset_file)
-            with open(dataset_file, 'r') as file:
-                content = file.read()
-            file_list = content.splitlines()
-            self.patches.extend(file_list)
-        self.true_len=len(self.patches)
+
+            if str(dataset_file) in dataset_list:
+                with open(dataset_file, 'r') as file:
+                    content = file.read()
+                file_list = content.splitlines()
+                self.patches.extend(file_list)
+        self.true_len = len(self.patches)
+
 
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         try:
