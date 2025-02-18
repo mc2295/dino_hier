@@ -161,7 +161,9 @@ label_dict:
   PLM: plasma_cell # (Plasma cells)
   #PMO: 10 # dupl (Promyelocytes)
 
-classes_to_int:
+start_from_dinobloom: False
+
+classes_to_int: #sorted(leaves_nodes) + sorted(internal_nodes)
  basophil: 0
  eosinophil: 1
  eosinophil_abnormal: 2

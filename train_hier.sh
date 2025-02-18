@@ -11,6 +11,7 @@
 #SBATCH --time=1:00:00
 #SBATCH --nice=1000
 #SBATCH --gres=gpu:1
+#SBATCH -C a100_80gb
 
 
 
