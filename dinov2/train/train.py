@@ -54,11 +54,6 @@ def get_args_parser(add_help: bool = True):
         action="store_true",
         help="Whether to not attempt to resume from the checkpoint directory. ",
     )
-    parser.add_argument(
-        "--n_levels",
-        default= "1", 
-        type=int, 
-        help="Number of levels in the hierarchy")
     parser.add_argument("--eval-only", action="store_true", help="perform evaluation only")
     parser.add_argument("--eval", type=str, default="", help="Eval type to perform")
 
