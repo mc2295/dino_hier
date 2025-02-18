@@ -12,7 +12,13 @@ import torch
 from pytorch_metric_learning import losses
 from dinov2.fsdp import ShardedGradScaler, get_fsdp_modules, get_fsdp_wrapper, reshard_fsdp_model
 from dinov2.layers import DINOHead
-from dinov2.loss import DINOLoss, KoLeoLoss, iBOTPatchLoss
+from dinov2.loss import (
+    DINOLoss, 
+    KoLeoLoss, 
+    iBOTPatchLoss,
+    HierarchicalCrossEntropyLoss, 
+    get_weighting, 
+    load_hierarchy)
 from dinov2.models import build_model_from_cfg
 from pytorch_revgrad import RevGrad
 import requests
@@ -277,14 +283,22 @@ class SSLMetaArch(nn.Module):
                     )
                 else: 
                     raise NotImplementedError
-                loss_fcs=[]
+                loss_fcs={}
 
-                for loss in supervised_conf_dict.losses:
+                for loss_name in supervised_conf_dict.losses:
 
                     if loss == "CrossEntropy":
-                        loss_fcs.append(nn.CrossEntropyLoss(ignore_index=-1))
+                        loss_fcs[loss_name] = nn.CrossEntropyLoss(ignore_index=-1)
                     elif loss == "SupConLoss":
-                       loss_fcs.append(losses.SupConLoss())
+                       loss_fcs[loss_name] = losses.SupConLoss()
+                    elif loss == "HierCrossEntropy":
+                        hierarchy = load_hierarchy() #load the tree
+                        classes = sorted(self.cfg.classes_to_int.keys()) #load all possible classes for cells
+                        leaves_nodes = [i for i in classes if i in hierarchy.leaves()]
+                        intern_nodes = [i for i in classes if i not in hierarchy.leaves()]
+                        alpha = 0.5 # it controls the difference between low level and high levels in the hierarchy
+                        weights = get_weighting(hierarchy, "exponential", value= alpha) #weight each edge of the hierarchy
+                        loss_fcs[loss_name] = HierarchicalCrossEntropyLoss(hierarchy, leaves_nodes, intern_nodes, weights).cuda()
                     else:
                         raise NotImplementedError
 
@@ -582,19 +596,17 @@ class SSLMetaArch(nn.Module):
 
             supervised_loss = 0
             for i,subloss in enumerate(self.supervised_losses):
-                if i==0:
-                    for loss in subloss:
-                        current_loss=loss(cls_output, masked_labels)
-                        supervised_loss += self.supervised_loss_weight * current_loss
-                        loss_accumulator += supervised_loss
-                        loss_dict[str(loss.__class__).split(".")[-1].replace("'>","")] = supervised_loss / loss_scales
+               
+                for loss_name, loss in subloss.items():
+                    if loss_name in {'CrossEntropy', 'HierCrossEntropy'}:
+                        current_loss = loss(cls_output, masked_labels) #loss applies to MLP output
 
-                elif i ==1:
-                    for loss in subloss:
-                        current_loss=loss(masked_cls_tokens, masked_labels)
-                        supervised_loss += self.supervised_loss_weight * current_loss
-                        loss_accumulator += supervised_loss
-                        loss_dict[str(loss.__class__).split(".")[-1].replace("'>","")] = supervised_loss / loss_scales
+                    if loss_name in {'SupConLoss'}: 
+                        current_loss = loss(masked_cls_tokens, masked_labels) # loss applies to DINO encoder output
+                    
+                    supervised_loss += self.supervised_loss_weight * current_loss
+                    loss_accumulator += supervised_loss
+                    loss_dict[loss_name] = supervised_loss / loss_scales
 
         if self.do_domain_loss:
             mask = images["domain_labels"] != -1  # should not be necessary as all samples have a domain
