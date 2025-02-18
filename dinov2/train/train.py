@@ -237,7 +237,7 @@ def do_train(cfg, model, resume=False):
         dataset_str=cfg.train.dataset_path,
         transform=data_transform,
         #target_transform=lambda x: torch.tensor(cfg.label_dict[x]) if x in cfg.label_dict.keys() else torch.tensor(-1),
-        target_transform=lambda x: torch.tensor(cfg.classes_to_int[cfg.label_dict[x]]) if x in cfg.label_dict.keys() else torch.tensor(unlab_label)
+        target_transform=lambda x: torch.tensor(cfg.classes_to_int[cfg.label_dict[x]]) if x in cfg.label_dict.keys() else torch.tensor(-1),
         domain_target_transform=lambda x: torch.tensor(cfg.domain.label_dict[x]) if x in cfg.domain.label_dict.keys() else torch.tensor(-1),
     )
     # sampler_type = SamplerType.INFINITE

@@ -287,11 +287,11 @@ class SSLMetaArch(nn.Module):
 
                 for loss_name in supervised_conf_dict.losses:
 
-                    if loss == "CrossEntropy":
+                    if loss_name == "CrossEntropy":
                         loss_fcs[loss_name] = nn.CrossEntropyLoss(ignore_index=-1)
-                    elif loss == "SupConLoss":
+                    elif loss_name == "SupConLoss":
                        loss_fcs[loss_name] = losses.SupConLoss()
-                    elif loss == "HierCrossEntropy":
+                    elif loss_name == "HierCrossEntropy":
                         hierarchy = load_hierarchy() #load the tree
                         classes = sorted(self.cfg.classes_to_int.keys()) #load all possible classes for cells
                         leaves_nodes = [i for i in classes if i in hierarchy.leaves()]
