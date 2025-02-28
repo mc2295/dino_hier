@@ -5,4 +5,4 @@
 
 from .image_net import ImageNet
 from .image_net_22k import ImageNet22k
-from .cytologia import CytologiaDatasetUnSup, CytologiaDatasetSup
+from .dataloader_hier import CytologiaDatasetUnSup, CytologiaDatasetSup
