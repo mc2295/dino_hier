@@ -69,7 +69,7 @@ sbatch train.sh
 ```
 The user can adjust the following hyperparameters:
 
-- **`n_levels`**: Parameter to choose between flat or hierarchical supervision.
-- **`version`**: Determines which hierarchy to implement (`H1`, `H2`, `H3`).
+- **`hier`**: `True` or `False` Parameter to choose between flat (CE) or hierarchical supervision (HXE).
+- **`version`**: (1, 2, 3) Determines which hierarchy to implement (`H1`, `H2`, `H3`).
 - **`alpha`**: Sets up the alpha hyperparameter to weight edges in the hierarchical tree.
 
