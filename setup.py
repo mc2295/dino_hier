@@ -10,7 +10,7 @@ from typing import List, Tuple
 from setuptools import setup, find_packages
 
 
-NAME = "dinov2"
+NAME = "dinov2_hier"
 DESCRIPTION = "PyTorch code and models for the DINOv2 self-supervised learning method."
 
 URL = "https://github.com/facebookresearch/dinov2"
@@ -40,7 +40,7 @@ def get_requirements(path: str = HERE / "requirements.txt") -> Tuple[List[str], 
 
 
 def get_package_version() -> str:
-    with open(HERE / "dinov2/__init__.py") as f:
+    with open(HERE / "dinov2_hier/__init__.py") as f:
         result = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", f.read(), re.M)
         if result:
             return result.group(1)

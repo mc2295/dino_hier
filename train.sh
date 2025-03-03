@@ -5,9 +5,7 @@
 #SBATCH -J dino_hier
 #SBATCH -p gpu_p
 #SBATCH --ntasks=1
-#SBATCH -q gpu_normal
-#SBATCH --time=1:00:00
-#SBATCH --nice=1000
+#SBATCH -q gpu_priority
 #SBATCH --gres=gpu:1
 
 
