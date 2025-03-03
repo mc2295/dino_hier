@@ -87,94 +87,9 @@ def get_weighting(hierarchy: Tree, weighting="uniform", **kwargs):
     else:
         raise NotImplementedError("Weighting {} is not implemented".format(weighting))
 
-def load_hierarchy_v2():
-    hierarchy = Tree("root", [
-        Tree("blast", [
-            Tree("blast_normality", [
-                Tree("blast_maturity", [
-                    "lymphoblast",
-                    "myeloblast",
-                    "lymphocyte_immature"
-                    ])
-                ])
-        ]),
-
-        Tree("lymphopoiesis", [
-            Tree("normal", [
-                Tree("lymphocyte_mature", [
-                        "lymphocyte_reactive",
-                        "lymphocyte_typical",
-                        "plasma_cell"
-                        ])
-                ]),
-            Tree("lymphocyte_atypical", [
-                Tree('undefined_maturity', [
-                    "hairy_cell",
-                    "lymphocyte_large_granular",
-                    "lymphocyte_neoplastic"
-                ])
-            ])
-        ]),
-        Tree("granulopoiesis", [
-            Tree("normal", [
-                Tree("immature", [
-                    "metamyelocyte",
-                    "myelocyte",
-                    "promyelocyte"
-                    ]),
-                Tree("mature", [
-                    "basophil",
-                    "eosinophil",
-                    Tree("neutrophil", [
-                        "neutrophil_band",
-                        "neutrophil_segmented"
-                        ])
-                    ])
-            ]),
-            Tree("abnormal", [
-                Tree("immature", [
-                "promyelocyte_bilobed"
-                ]),
-                Tree("mature", [
-                    "eosinophil_abnormal",
-                ])
-            ])
-        ]),
-        Tree("monocytopoiesis", [
-            Tree("normal", [
-                Tree("immature", [
-                    "monoblast"
-                ]),
-                Tree("mature", [
-                    "monocyte"
-                ]),
-            ]),
-            Tree("abnormal", [
-                Tree("immature", [
-                    "fagott_cell"
-                ])
-            ])
-        ]),
-        Tree("thrombopoiesis", [
-            "platelet"
-        ]),
-        Tree("erythropoiesis", [
-            Tree('normal', [
-                Tree("immature", [
-                    "proeryhtroblast",
-                    "erythroblast"
-                ]),
-            ]),
-        ]),
-
-        Tree("artefacts", [
-            "smudge_cell"
-        ])
-    ])
-    return hierarchy
 
     
-def load_hierarchy():
+def load_hierarchy(version = 1):
     """
     Load the hierarchy corresponding to a given dataset.
 
@@ -185,37 +100,124 @@ def load_hierarchy():
     Returns:
         A nltk tree whose labels corresponds to wordnet wnids.
     """
-    hierarchy = Tree("blast", [
-        Tree("lymphopoiesis.", [
-            Tree("immature", ["lymphocyte_immature", "lymphoblast"]),
-            Tree("lymphocyte_mature", [
-                Tree("typical", ["plasma_cell", "lymphocyte_typical"]),
-                Tree("lymphocyte_atypical", ["hairy_cell", "lymphocyte_large_granular", "lymphocyte_reactive", "lymphocyte_neoplastic", "lymphocyte_variant"]),
+    if version == 1:
+        hierarchy = Tree("blrootast", [
+            Tree("lymphopoiesis.", [
+                Tree("immature", ["lymphocyte_immature", "lymphoblast"]),
+                Tree("lymphocyte_mature", [
+                    Tree("typical", ["plasma_cell", "lymphocyte_typical"]),
+                    Tree("lymphocyte_atypical", ["hairy_cell", "lymphocyte_large_granular", "lymphocyte_reactive", "lymphocyte_neoplastic", "lymphocyte_variant"]),
+                ])
+            ]),
+            Tree("erythropoiesis", [
+                Tree("immature", ['proeryhtroblast', "erythroblast"]), 
+            ]),
+            Tree("monopoiesis", [
+                Tree("immature", ["monoblast"]),
+                Tree("mature", ["monocyte"])]),
+            Tree("granulopoiesis", [
+                Tree("immature", [
+                    "myeloblast",
+                    Tree("promyelocyte_all", ["promyelocyte", "promyelocyte_bilobed", "fagott_cell"]),
+                    "myelocyte",
+                    "metamyelocyte"
+                ]),
+                Tree("mature", [
+                    "basophil",
+                    Tree("neutrophil", ["neutrophil_band", "neutrophil_segmented"]),
+                    Tree("eosinophil_all", ["eosinophil ", "eosinophil_abnormal"])
+                ]),
+            ]),
+            Tree("smudge_cell_0", ["smudge_cell "]),
+            Tree("blast_0", ["blast"]),
+            Tree("platelet_0", ["platelet"]),
+        ])
+    if version == 2: 
+        
+        hierarchy = Tree("root", [
+            Tree("blast", [
+                Tree("blast_normality", [
+                    Tree("blast_maturity", [
+                        "lymphoblast",
+                        "myeloblast",
+                        "lymphocyte_immature"
+                        ])
+                    ])
+            ]),
+
+            Tree("lymphopoiesis", [
+                Tree("normal", [
+                    Tree("lymphocyte_mature", [
+                            "lymphocyte_reactive",
+                            "lymphocyte_typical",
+                            "plasma_cell"
+                            ])
+                    ]),
+                Tree("lymphocyte_atypical", [
+                    Tree('undefined_maturity', [
+                        "hairy_cell",
+                        "lymphocyte_large_granular",
+                        "lymphocyte_neoplastic"
+                    ])
+                ])
+            ]),
+            Tree("granulopoiesis", [
+                Tree("normal", [
+                    Tree("immature", [
+                        "metamyelocyte",
+                        "myelocyte",
+                        "promyelocyte"
+                        ]),
+                    Tree("mature", [
+                        "basophil",
+                        "eosinophil",
+                        Tree("neutrophil", [
+                            "neutrophil_band",
+                            "neutrophil_segmented"
+                            ])
+                        ])
+                ]),
+                Tree("abnormal", [
+                    Tree("immature", [
+                    "promyelocyte_bilobed"
+                    ]),
+                    Tree("mature", [
+                        "eosinophil_abnormal",
+                    ])
+                ])
+            ]),
+            Tree("monocytopoiesis", [
+                Tree("normal", [
+                    Tree("immature", [
+                        "monoblast"
+                    ]),
+                    Tree("mature", [
+                        "monocyte"
+                    ]),
+                ]),
+                Tree("abnormal", [
+                    Tree("immature", [
+                        "fagott_cell"
+                    ])
+                ])
+            ]),
+            Tree("thrombopoiesis", [
+                "platelet"
+            ]),
+            Tree("erythropoiesis", [
+                Tree('normal', [
+                    Tree("immature", [
+                        "proeryhtroblast",
+                        "erythroblast"
+                    ]),
+                ]),
+            ]),
+
+            Tree("artefacts", [
+                "smudge_cell"
             ])
-        ]),
-        Tree("erythropoiesis", [
-            Tree("immature", ['proeryhtroblast', "erythroblast"]), 
-        ]),
-        Tree("monopoiesis", [
-            Tree("immature", ["monoblast"]),
-            Tree("mature", ["monocyte"])]),
-        Tree("granulopoiesis", [
-            Tree("immature", [
-                "myeloblast",
-                Tree("promyelocyte_all", ["promyelocyte", "promyelocyte_bilobed", "fagott_cell"]),
-                "myelocyte",
-                "metamyelocyte"
-            ]),
-            Tree("mature", [
-                "basophil",
-                Tree("neutrophil", ["neutrophil_band", "neutrophil_segmented"]),
-                Tree("eosinophil_all", ["eosinophil ", "eosinophil_abnormal"])
-            ]),
-        ]),
-        Tree("Smudge Cell", ["Smudge Cell "]),
-        Tree("Blast", ["Blast "]),
-        Tree("Platelet", ["Platelet "]),
-    ])
+        ])
+
     return hierarchy
 
 class HierarchicalLLLoss(torch.nn.Module):

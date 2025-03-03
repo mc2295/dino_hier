@@ -54,6 +54,26 @@ For python-based LazyConfig, use "path.key=value".
         type=str,
         help="Output directory to save logs and checkpoints",
     )
+    parser.add_argument(
+        "--hier",
+        action="store_true",  
+        help="Whether to use hierarchical cross-entropy (default: False)."
+    )
+
+    parser.add_argument(
+        "--alpha",
+        default=0.5,
+        type=float,
+        help="Alpha hyperparameter to weight edges in the hierarchical tree (default: 0.5)."
+    )
+
+    parser.add_argument(
+        "--version",
+        default=1,
+        type=int,
+        choices=[1, 2, 3],  
+        help="Version of the hierarchy (1, 2, 3) (default: 1)."
+    )
 
     return parser
 

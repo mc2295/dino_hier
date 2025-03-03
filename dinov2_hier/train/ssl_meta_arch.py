@@ -210,16 +210,16 @@ class SSLMetaArch(nn.Module):
         if self.do_supervised_loss: 
             supervised_head = partial(MLP, layer_sizes=[embed_dim, cfg.supervised.n_classes])
             student_model_dict["supervised_head"] =supervised_head()
-            if self.cfg.n_levels == 1:
-                self.supervised_losses = nn.CrossEntropyLoss(ignore_index=-1)
-            elif self.cfg.n_levels > 1:
-                hierarchy = load_hierarchy() #load the tree
+            if self.cfg.hier:
+                hierarchy = load_hierarchy(version= self.cfg.version) #load the tree
                 classes = sorted(self.cfg.classes_to_int.keys()) #load all possible classes for cells
                 leaves_nodes = [i for i in classes if i in hierarchy.leaves()]
                 intern_nodes = [i for i in classes if i not in hierarchy.leaves()]
-                alpha = 0.5 # it controls the difference between low level and high levels in the hierarchy
+                alpha = self.cfg.alpha # it controls the difference between low level and high levels in the hierarchy
                 weights = get_weighting(hierarchy, "exponential", value= alpha) #weight each edge of the hierarchy
                 self.supervised_losses = HierarchicalCrossEntropyLoss(hierarchy, leaves_nodes, intern_nodes, weights).cuda()
+            else:
+                self.supervised_losses = nn.CrossEntropyLoss(ignore_index=-1)
             self.supervised_loss_weight = cfg.supervised.loss_weight
    
         self.need_to_synchronize_fsdp_streams = True
@@ -280,13 +280,13 @@ class SSLMetaArch(nn.Module):
 
         supervised_loss = self.supervised_loss_weight * self.supervised_losses(cls_output, masked_labels)
         loss_value = supervised_loss/2
-        loss_name = 'CrossEntropy' if self.cfg.n_levels == 1 else 'HierCrossEntropy' 
+        loss_name = 'HierCrossEntropy' if self.cfg.hier else 'CrossEntropy' 
 
         del cls_output
         del student_global_cls_tokens_sup
         torch.cuda.empty_cache()
         
-        return k, v       
+        return loss_name, loss_value       
 
     def forward_backward(self, images, images_sup, teacher_temp):
         n_global_crops = 2
