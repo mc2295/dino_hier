@@ -117,7 +117,7 @@ class DataAugmentationDINO(object):
 
         return output
 
-class DataAugmentationCytologia(object):
+class DataAugmentationSup(object):
     def __init__(
         self,
         img_size = 224

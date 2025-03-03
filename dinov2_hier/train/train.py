@@ -13,7 +13,7 @@ from fvcore.common.checkpoint import PeriodicCheckpointer
 import torch
 
 from dinov2_hier.data import SamplerType, make_data_loader, make_dataset
-from dinov2_hier.data import collate_data_and_cast, DataAugmentationDINO, DataAugmentationCytologia, MaskingGenerator
+from dinov2_hier.data import collate_data_and_cast, collate_data_and_cast_lab, DataAugmentationDINO, DataAugmentationSup, MaskingGenerator, CollateMixup
 import dinov2_hier.distributed as distributed
 from dinov2_hier.fsdp import FSDPCheckpointer
 from dinov2_hier.logging import MetricLogger
@@ -21,7 +21,7 @@ from dinov2_hier.utils.config import setup
 from dinov2_hier.utils.utils import CosineScheduler
 
 from dinov2_hier.train.ssl_meta_arch import SSLMetaArch
-
+from tqdm import tqdm
 
 torch.backends.cuda.matmul.allow_tf32 = True  # PyTorch 1.12 sets this to False by default
 logger = logging.getLogger("dinov2")
@@ -29,7 +29,7 @@ logger = logging.getLogger("dinov2")
 
 def get_args_parser(add_help: bool = True):
     parser = argparse.ArgumentParser("DINOv2 training", add_help=add_help)
-    parser.add_argument("--config-file", default="/home/aih/manon.chossegros/Challenge/src/dinov2/dinov2/configs/train/custom_2.yaml", metavar="FILE", help="path to config file")
+    parser.add_argument("--config-file", default="dinov2/configs/train/custom.yaml", metavar="FILE", help="path to config file")
     parser.add_argument(
         "--no-resume",
         action="store_true",
@@ -50,7 +50,7 @@ For python-based LazyConfig, use "path.key=value".
     parser.add_argument(
         "--output-dir",
         "--output_dir",
-        default="/home/aih/manon.chossegros/Challenge/models/dinov2",
+        default="models",
         type=str,
         help="Output directory to save logs and checkpoints",
     )
@@ -119,8 +119,9 @@ def apply_optim_scheduler(optimizer, lr, wd, last_layer_lr):
         param_group["lr"] = (last_layer_lr if is_last_layer else lr) * lr_multiplier
 
 
-def do_test(cfg, model, iteration):
+def do_test(cfg, model, iteration, data_loader_sup_val):
     new_state_dict = model.teacher.state_dict()
+    new_state_dict_student = model.student.state_dict()
 
     if distributed.is_main_process():
         iterstring = str(iteration)
@@ -129,7 +130,28 @@ def do_test(cfg, model, iteration):
         # save teacher checkpoint
         teacher_ckp_path = os.path.join(eval_dir, "teacher_checkpoint.pth")
         torch.save({"teacher": new_state_dict}, teacher_ckp_path)
+        student_ckp_path = os.path.join(eval_dir, "student_checkpoint.pth")
+        torch.save({"student": new_state_dict_student}, student_ckp_path)
+    
+    if data_loader_sup_val is not None:
+        loss = 0
+        model.teacher.eval()
+        with torch.no_grad():
+            for data_val in tqdm(data_loader_sup_val):
+                loss_type, loss_value = model.get_supervised_loss(data_val)
+                loss += loss_value
+        print("Loss Val", loss)
+        return loss
+    else: 
+        return 0
 
+def cycle(loader: torch.utils.data.DataLoader):
+    epoch = 0
+    while True:
+        loader.sampler.set_epoch(epoch)
+        for x in loader:
+            yield x
+        epoch += 1
 
 def do_train(cfg, model, resume=False):
     model.train()
@@ -179,7 +201,7 @@ def do_train(cfg, model, resume=False):
         global_crops_size=cfg.crops.global_crops_size,
         local_crops_size=cfg.crops.local_crops_size,
     )
-    data_transform_sup = DataAugmentationCytologia(224)
+    data_transform_sup = DataAugmentationSup(224)
 
     collate_fn = partial(
         collate_data_and_cast,
@@ -189,7 +211,10 @@ def do_train(cfg, model, resume=False):
         mask_generator=mask_generator,
         dtype=inputs_dtype,
     )
-
+    collate_lab = partial(
+        collate_data_and_cast_lab,
+        dtype=inputs_dtype,
+    )
     # setup data loader
 
     dataset = make_dataset(
@@ -197,13 +222,20 @@ def do_train(cfg, model, resume=False):
         transform=data_transform,
         target_transform=lambda _: (),
     )
+
+    
     dataset_sup = make_dataset(
         dataset_str=cfg.train.dataset_path_sup,
         transform=data_transform_sup,
-        target_transform=lambda _: (),
+        target_transform=lambda x: torch.tensor(cfg.classes_to_int[cfg.label_dict[x]]) if x in cfg.label_dict.keys() else torch.tensor(unlab_label),
+        #target_transform=lambda x: torch.tensor(cfg.classes_to_int[cfg.label_dict[x]]) if x in cfg.label_dict.keys() else torch.tensor(unlab_label),
+
     )
-    sampler_type_sup = SamplerType.INFINITE
-    sampler_type = SamplerType.DISTRIBUTED
+
+
+
+    sampler_type_sup = SamplerType.DISTRIBUTED
+    sampler_type = SamplerType.INFINITE
     data_loader = make_data_loader(
         dataset=dataset,
         batch_size=cfg.train.batch_size_per_gpu,
@@ -215,6 +247,8 @@ def do_train(cfg, model, resume=False):
         drop_last=True,
         collate_fn=collate_fn,
     )
+
+
     data_loader_sup = make_data_loader(
         dataset=dataset_sup,
         batch_size=cfg.train.batch_size_per_gpu,
@@ -224,8 +258,10 @@ def do_train(cfg, model, resume=False):
         sampler_type=sampler_type_sup,
         sampler_advance=0,  # TODO(qas): fix this -- start_iter * cfg.train.batch_size_per_gpu,
         drop_last=True,
-        collate_fn=None,
+        collate_fn = collate_lab
     )
+    data_loader_sup = cycle(data_loader_sup)
+
 
     # training loop
 
@@ -243,7 +279,7 @@ def do_train(cfg, model, resume=False):
         max_iter,
         start_iter,
     ):
-        data_sup = next(iter(data_loader_sup))
+        data_sup = next(data_loader_sup)
         current_batch_size = data["collated_global_crops"].shape[0] / 2
         if iteration > max_iter:
             return
@@ -303,7 +339,9 @@ def do_train(cfg, model, resume=False):
         # checkpointing and testing
 
         if cfg.evaluation.eval_period_iterations > 0 and (iteration + 1) % cfg.evaluation.eval_period_iterations == 0:
-            do_test(cfg, model, f"training_{iteration}")
+            #loss_val = do_test(cfg, model, f"training_{iteration}", data_loader_sup_val)
+            loss_val = do_test(cfg, model, f"training_{iteration}", None)
+            metric_logger.update(loss_val=loss_val)
             torch.cuda.synchronize()
         periodic_checkpointer.step(iteration)
 
@@ -326,7 +364,7 @@ def main(args):
             .get("iteration", -1)
             + 1
         )
-        return do_test(cfg, model, f"manual_{iteration}")
+        return do_test(cfg, model, f"manual_{iteration}", None)
 
     do_train(cfg, model, resume=not args.no_resume)
 

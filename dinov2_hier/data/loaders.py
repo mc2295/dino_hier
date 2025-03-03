@@ -10,7 +10,7 @@ from typing import Any, Callable, List, Optional, TypeVar
 import torch
 from torch.utils.data import Sampler
 
-from .datasets import ImageNet, ImageNet22k, CytologiaDatasetSup, CytologiaDatasetUnSup
+from .datasets import ImageNet, ImageNet22k, DatasetSup, DatasetUnSup
 from .samplers import EpochSampler, InfiniteSampler, ShardedInfiniteSampler
 
 
@@ -63,10 +63,10 @@ def _parse_dataset_str(dataset_str: str):
             kwargs["split"] = ImageNet.Split[kwargs["split"]]
     elif name == "ImageNet22k":
         class_ = ImageNet22k
-    elif name == 'CytologiaSup':
-        class_ = CytologiaDatasetSup
-    elif name == 'CytologiaUnSup':
-        class_ = CytologiaDatasetUnSup
+    elif name == 'Sup':
+        class_ = DatasetSup
+    elif name == 'UnSup':
+        class_ = DatasetUnSup
     else:
         raise ValueError(f'Unsupported dataset "{name}"')
 

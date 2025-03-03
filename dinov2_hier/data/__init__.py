@@ -7,5 +7,5 @@ from .adapters import DatasetWithEnumeratedTargets
 from .loaders import make_data_loader, make_dataset, SamplerType
 from .collate import collate_data_and_cast, collate_data_and_cast_lab
 from .masking import MaskingGenerator
-from .augmentations import DataAugmentationDINO, DataAugmentationCytologia
+from .augmentations import DataAugmentationDINO, DataAugmentationSup
 from .collate_lab import CollateMixup   

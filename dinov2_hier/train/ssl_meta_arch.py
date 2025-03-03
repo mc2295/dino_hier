@@ -10,7 +10,7 @@ import torch
 from torch import nn
 import os
 
-from dinov2_hier.loss import DINOLoss, iBOTPatchLoss, KoLeoLoss, HierarchicalCrossEntropyLoss, get_weighting, load_hierarchy, load_hierarchy_v2
+from dinov2_hier.loss import DINOLoss, iBOTPatchLoss, KoLeoLoss, HierarchicalCrossEntropyLoss, get_weighting, load_hierarchy
 from pytorch_metric_learning import losses
 from dinov2_hier.models import build_model_from_cfg
 from dinov2_hier.layers import DINOHead
@@ -20,7 +20,6 @@ from dinov2_hier.fsdp import get_fsdp_wrapper, ShardedGradScaler, get_fsdp_modul
 import math
 from dinov2_hier.models.vision_transformer import BlockChunk
 import requests
-
 try:
     from xformers.ops import fmha
 except ImportError:
@@ -35,15 +34,13 @@ class MLP(nn.Module):
     layer_sizes[0] is the dimension of the input
     layer_sizes[-1] is the dimension of the output
     """
-    def __init__(self, layer_sizes, final_relu=False, grad_rev=False):
+    def __init__(self, layer_sizes, final_relu=False):
         super().__init__()
 
         layer_list = []
         layer_sizes = [int(x) for x in layer_sizes]
         num_layers = len(layer_sizes) - 1
         final_relu_layer = num_layers if final_relu else num_layers - 1
-        if grad_rev:
-            layer_list.append(RevGrad())
         for i in range(len(layer_sizes) - 1):
             input_size = layer_sizes[i]
             curr_size = layer_sizes[i + 1]
@@ -216,18 +213,12 @@ class SSLMetaArch(nn.Module):
             if self.cfg.n_levels == 1:
                 self.supervised_losses = nn.CrossEntropyLoss(ignore_index=-1)
             elif self.cfg.n_levels > 1:
-                hierarchy = load_hierarchy(self.cfg.n_levels, version1 = True)
-                classes = sorted([l for l in {','.join([str(k) for k in j  if k!= -1]) for (i,j) in self.cfg.label_dict.items()}])
-                #self.classes_to_int = {class_label:i for (i, class_label) in enumerate(leaves_nodes + intern_nodes)}
-                #hierarchy = load_hierarchy_sophia()
-                #classes = sorted(self.cfg.classes_to_int.keys())
+                hierarchy = load_hierarchy() #load the tree
+                classes = sorted(self.cfg.classes_to_int.keys()) #load all possible classes for cells
                 leaves_nodes = [i for i in classes if i in hierarchy.leaves()]
                 intern_nodes = [i for i in classes if i not in hierarchy.leaves()]
-
-                self.classes_to_int = {class_label:i for (i, class_label) in enumerate(leaves_nodes + intern_nodes)}
-
-                alpha = 0.5
-                weights = get_weighting(hierarchy, "exponential", value= alpha)
+                alpha = 0.5 # it controls the difference between low level and high levels in the hierarchy
+                weights = get_weighting(hierarchy, "exponential", value= alpha) #weight each edge of the hierarchy
                 self.supervised_losses = HierarchicalCrossEntropyLoss(hierarchy, leaves_nodes, intern_nodes, weights).cuda()
             self.supervised_loss_weight = cfg.supervised.loss_weight
    
@@ -283,30 +274,14 @@ class SSLMetaArch(nn.Module):
         student_global_cls_tokens_sup = student_global_backbone_output_dict_sup["x_norm_clstoken"]
         #student_global_cls_tokens_sup = student_global_backbone_output_dict_sup
         cls_output = self.student.module.supervised_head(student_global_cls_tokens_sup) if hasattr(self.student, 'module') else self.student.supervised_head(student_global_cls_tokens_sup)
-        sophia = False
-        if self.cfg.n_levels == 1 or sophia:
-            mask = labels != -1
-            masked_labels = labels[mask]
-            cls_output = cls_output[mask]       
+        mask = labels != -1
+        masked_labels = labels[mask]
+        cls_output = cls_output[mask]       
 
-            supervised_loss = self.supervised_loss_weight * self.supervised_losses(cls_output, masked_labels)
-            k,v = 'CrossEntropy', supervised_loss / 2
-            if sophia: 
-                k = 'HierCrossEntropy'
-        else:
-            norm_labels = [','.join([str(k.int().item()) for k in j]) for j in labels.squeeze(0)]
-            mask = [i != '-1,-1,-1,-1' for i in norm_labels]
+        supervised_loss = self.supervised_loss_weight * self.supervised_losses(cls_output, masked_labels)
+        loss_value = supervised_loss/2
+        loss_name = 'CrossEntropy' if self.cfg.n_levels == 1 else 'HierCrossEntropy' 
 
-
-            masked_labels = labels[mask]
-            cls_output = cls_output[mask]
-
-            str_labels = [','.join([str(k.int().item()) for k in j if k!= -1]) for j in masked_labels]
-            int_label = [self.classes_to_int[k] for k in str_labels]
-
-            current_loss = self.supervised_losses(cls_output, int_label)
-            supervised_loss = self.supervised_loss_weight * current_loss
-            k,v  = 'HierCrossEntropy', supervised_loss / 2
         del cls_output
         del student_global_cls_tokens_sup
         torch.cuda.empty_cache()

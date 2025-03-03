@@ -16,7 +16,7 @@ from torchvision import transforms
 from torchvision.datasets import VisionDataset
 
 
-class CytologiaDatasetUnSup(VisionDataset):
+class DatasetUnSup(VisionDataset):
     def __init__(
         self,
         *,
@@ -52,7 +52,7 @@ class CytologiaDatasetUnSup(VisionDataset):
         return len(self.df)
 
 
-class CytologiaDatasetSup(VisionDataset):
+class DatasetSup(VisionDataset):
     def __init__(
         self,
         *,
@@ -80,7 +80,6 @@ class CytologiaDatasetSup(VisionDataset):
         #label = self.label_to_int[label_cat]
         label = self.target_transform(label_cat)
         img_path = row['NAME']
-        #x1, x2, y1, y2 = row['x1'], row['x2'], row['y1'], row['y2']
         try:
             image = self._load_img_(img_path)
         except Exception as e: 
@@ -94,8 +93,6 @@ class CytologiaDatasetSup(VisionDataset):
     def _load_img_(self, img_path):
         img = Image.open( img_path).convert(mode="RGB")
 
-        #if p>0:
-        #img = img.crop((x1,y1,x2,y2))
         return img
 
     def __len__(self) -> int:
