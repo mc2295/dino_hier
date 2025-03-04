@@ -12,3 +12,4 @@ dist/
 
 dinobloom_dataset_train_and_test.csv
 log/
+models/
