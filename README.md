@@ -53,7 +53,10 @@ See [contributing](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUCT.md
 │      └── hierarchical_ce.py   # Contains the tree structure and the hierarchical cross entropy
 │
 │   └── eval/
-│      └── eval_hier.py   # Evaluate model with non hierarchical and hierarchical metrics
+│      └── eval.py   # Extract features and compute KNN and LogReg classification scores
+│      └── eval_hier.py   # Evaluate model with hierarchical metrics
+│      └── compute_metrics_hier.py   # Compute hierarchical metrics
+│      └── compute_uncertainty.py   # Evaluate error intervals 
 └── README.md                 # This file
 |
 └── train.sh        #Train model

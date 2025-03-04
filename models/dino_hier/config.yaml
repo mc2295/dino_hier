@@ -89,7 +89,7 @@ train:
   centering: sinkhorn_knopp
   dataset_path_sup: Sup:df_path=dinobloom_dataset_train_and_test.csv:shuffle=1
   dataset_path_unsup: UnSup:df_path=dinobloom_dataset_train_and_test.csv:shuffle=1
-  n_classes: 27
+  n_classes: 26
   drop_path_rate: 0.4
   ffn_layer: swiglufused
   block_chunks: 0
@@ -145,7 +145,7 @@ evaluation:
 data_transform: default
 supervised:
   loss_weight: 1.0
-  n_classes: 22
+  n_classes: 26
 n_levels: 4
 label_dict:
   basophil: basophil
@@ -227,7 +227,7 @@ classes_to_int:
   lymphocyte_reactive: 9
   lymphocyte_typical: 10
   metamyelocyte: 11
-  monoblas: 12
+  monoblast: 12
   monocyte: 13
   myeloblast: 14
   myelocyte: 15

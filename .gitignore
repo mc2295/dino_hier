@@ -9,3 +9,6 @@ dist/
 *.swp
 
 .vscode/
+
+dinobloom_dataset_train_and_test.csv
+log/

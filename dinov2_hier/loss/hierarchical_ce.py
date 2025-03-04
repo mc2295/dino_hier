@@ -106,7 +106,7 @@ def load_hierarchy(version = 1):
                 Tree("immature", ["lymphocyte_immature", "lymphoblast"]),
                 Tree("lymphocyte_mature", [
                     Tree("typical", ["plasma_cell", "lymphocyte_typical"]),
-                    Tree("lymphocyte_atypical", ["hairy_cell", "lymphocyte_large_granular", "lymphocyte_reactive", "lymphocyte_neoplastic", "lymphocyte_variant"]),
+                    Tree("lymphocyte_atypical", ["hairy_cell", "lymphocyte_large_granular", "lymphocyte_reactive", "lymphocyte_neoplastic"]),
                 ])
             ]),
             Tree("erythropoiesis", [
@@ -128,7 +128,7 @@ def load_hierarchy(version = 1):
                     Tree("eosinophil_all", ["eosinophil", "eosinophil_abnormal"])
                 ]),
             ]),
-            Tree("smudge_cell_0", ["smudge_cell "]),
+            Tree("smudge_cell_0", ["smudge_cell"]),
             Tree("blast_0", ["blast"]),
             Tree("platelet_0", ["platelet"]),
         ])

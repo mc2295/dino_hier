@@ -33,7 +33,7 @@ train:
   dataset_path_sup: Sup:df_path=dinobloom_dataset_train_and_test.csv:shuffle=1
   dataset_path_unsup: UnSup:df_path=dinobloom_dataset_train_and_test.csv:shuffle=1
   centering: sinkhorn_knopp
-  n_classes: 27
+  n_classes: 26
 
   drop_path_rate: 0.4
   ffn_layer: swiglufused
@@ -73,7 +73,7 @@ dino:
 
 supervised:
   loss_weight: 1.0
-  n_classes: 22
+  n_classes: 26
 
 n_levels: 4
 
