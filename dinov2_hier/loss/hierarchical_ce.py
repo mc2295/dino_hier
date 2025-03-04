@@ -125,7 +125,7 @@ def load_hierarchy(version = 1):
                 Tree("mature", [
                     "basophil",
                     Tree("neutrophil", ["neutrophil_band", "neutrophil_segmented"]),
-                    Tree("eosinophil_all", ["eosinophil ", "eosinophil_abnormal"])
+                    Tree("eosinophil_all", ["eosinophil", "eosinophil_abnormal"])
                 ]),
             ]),
             Tree("smudge_cell_0", ["smudge_cell "]),

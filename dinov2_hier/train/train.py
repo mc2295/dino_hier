@@ -29,7 +29,7 @@ logger = logging.getLogger("dinov2")
 
 def get_args_parser(add_help: bool = True):
     parser = argparse.ArgumentParser("DINOv2 training", add_help=add_help)
-    parser.add_argument("--config-file", default="dinov2/configs/train/custom.yaml", metavar="FILE", help="path to config file")
+    parser.add_argument("--config-file", default="dinov2_hier/configs/train/custom.yaml", metavar="FILE", help="path to config file")
     parser.add_argument(
         "--no-resume",
         action="store_true",
@@ -54,11 +54,7 @@ For python-based LazyConfig, use "path.key=value".
         type=str,
         help="Output directory to save logs and checkpoints",
     )
-    parser.add_argument(
-        "--hier",
-        action="store_true",  
-        help="Whether to use hierarchical cross-entropy (default: False)."
-    )
+
 
     parser.add_argument(
         "--alpha",
@@ -66,7 +62,11 @@ For python-based LazyConfig, use "path.key=value".
         type=float,
         help="Alpha hyperparameter to weight edges in the hierarchical tree (default: 0.5)."
     )
-
+    parser.add_argument(
+        "--hier",
+        action="store_true",  
+        help="Whether to use hierarchical cross-entropy (default: False)."
+    )
     parser.add_argument(
         "--version",
         default=1,
@@ -372,6 +372,9 @@ def do_train(cfg, model, resume=False):
 
 def main(args):
     cfg = setup(args)
+    cfg.version = args.version
+    cfg.hier = args.hier
+    cfg.alpha = args.alpha
 
     model = SSLMetaArch(cfg).to(torch.device("cuda"))
     model.prepare_for_distributed_training()

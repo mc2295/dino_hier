@@ -1,0 +1,247 @@
+MODEL:
+  WEIGHTS: ''
+compute_precision:
+  grad_scaler: true
+  teacher:
+    backbone:
+      sharding_strategy: SHARD_GRAD_OP
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp16
+        buffer_dtype: fp32
+    dino_head:
+      sharding_strategy: SHARD_GRAD_OP
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp16
+        buffer_dtype: fp32
+    ibot_head:
+      sharding_strategy: SHARD_GRAD_OP
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp16
+        buffer_dtype: fp32
+    supervised_head:
+      sharding_strategy: SHARD_GRAD_OP
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp16
+        buffer_dtype: fp32
+  student:
+    backbone:
+      sharding_strategy: SHARD_GRAD_OP
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp16
+        buffer_dtype: fp32
+    dino_head:
+      sharding_strategy: SHARD_GRAD_OP
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp32
+        buffer_dtype: fp32
+    ibot_head:
+      sharding_strategy: SHARD_GRAD_OP
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp32
+        buffer_dtype: fp32
+    supervised_head:
+      sharding_strategy: SHARD_GRAD_OP
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp16
+        buffer_dtype: fp32
+    domain_head:
+      sharding_strategy: SHARD_GRAD_OP
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp16
+        buffer_dtype: fp32
+dino:
+  loss_weight: 1.0
+  head_n_prototypes: 65536
+  head_bottleneck_dim: 384
+  head_nlayers: 3
+  head_hidden_dim: 2048
+  koleo_loss_weight: 0.0
+  smooth_rank_loss_weight: 0.0
+ibot:
+  loss_weight: 1.0
+  mask_sample_probability: 0.5
+  mask_ratio_min_max:
+  - 0.1
+  - 0.5
+  separate_head: true
+  head_n_prototypes: 65536
+  head_bottleneck_dim: 256
+  head_nlayers: 3
+  head_hidden_dim: 2048
+train:
+  batch_size_per_gpu: 64
+  dataset_path: ImageNet:split=TRAIN
+  output_dir: /ictstr01/home/aih/manon.chossegros/MICCAI/models/dino_hier
+  saveckp_freq: 20
+  seed: 0
+  num_workers: 25
+  OFFICIAL_EPOCH_LENGTH: 500
+  cache_dataset: true
+  centering: sinkhorn_knopp
+  dataset_path_sup: Sup:df_path=dinobloom_dataset_train_and_test.csv:shuffle=1
+  dataset_path_unsup: UnSup:df_path=dinobloom_dataset_train_and_test.csv:shuffle=1
+  n_classes: 27
+  drop_path_rate: 0.4
+  ffn_layer: swiglufused
+  block_chunks: 0
+  num_register_tokens: 0
+student:
+  arch: dinov2_vitl14
+  patch_size: 14
+  drop_path_rate: 0.3
+  layerscale: 1.0e-05
+  drop_path_uniform: true
+  pretrained_weights: ''
+  ffn_layer: mlp
+  block_chunks: 0
+  qkv_bias: true
+  proj_bias: true
+  ffn_bias: true
+  num_register_tokens: 0
+  interpolate_antialias: false
+  interpolate_offset: 0.1
+teacher:
+  momentum_teacher: 0.994
+  final_momentum_teacher: 1
+  warmup_teacher_temp: 0.04
+  teacher_temp: 0.07
+  warmup_teacher_temp_epochs: 30
+optim:
+  epochs: 200
+  weight_decay: 0.04
+  weight_decay_end: 0.2
+  base_lr: 0.0002
+  lr: 5.0e-05
+  warmup_epochs: 20
+  min_lr: 1.0e-06
+  clip_grad: 3.0
+  freeze_last_layer_epochs: 1
+  scaling_rule: sqrt_wrt_1024
+  patch_embed_lr_mult: 0.2
+  layerwise_decay: 1.0
+  adamw_beta1: 0.9
+  adamw_beta2: 0.999
+crops:
+  global_crops_scale:
+  - 0.32
+  - 1.0
+  local_crops_number: 1
+  local_crops_scale:
+  - 0.05
+  - 0.32
+  global_crops_size: 224
+  local_crops_size: 98
+evaluation:
+  eval_period_iterations: 1000
+data_transform: default
+supervised:
+  loss_weight: 1.0
+  n_classes: 22
+n_levels: 4
+label_dict:
+  basophil: basophil
+  eosinophil: eosinophil
+  erythroblast: erythroblast
+  lymphocyte_typical: lymphocyte_typical
+  lymphocyte: lymphocyte_mature
+  metamyelocyte: metamyelocyte
+  monocyte: monocyte
+  myeloblast: myeloblast
+  myelocyte: myelocyte
+  neutrophil_band: neutrophil_band
+  neutrophil_segmented: neutrophil_segmented
+  promyelocyte: promyelocyte
+  lymphoblast: lymphoblast
+  platelet: platelet
+  BAS: basophil
+  EBO: erythroblast
+  EOS: eosinophil
+  KSC: smudge_cell
+  LYT: lymphocyte_typical
+  MMZ: metamyelocyte
+  MON: monocyte
+  MYB: myelocyte
+  MYO: myeloblast
+  NGB: neutrophil_band
+  NGS: neutrophil_segmented
+  PMO: promyelocyte
+  PMB: promyelocyte_bilobed
+  MOB: monoblast
+  LYA: lymphocyte_atypical
+  01-NORMO: erythroblast
+  1-Normo: erythroblast
+  05-MONO: monoblast
+  5-MONO: monoblast
+  09-BASO: basophil
+  11-STAB: neutrophil_band
+  13-MYBL: myeloblast
+  15-SEG: neutrophil_segmented
+  17-Kernschatten: smudge_cell
+  19-MYEL: myelocyte
+  21-Haarzelle: hairy_cell
+  10-EOS: eosinophil
+  14-LYMPH-typ: lymphocyte_typical
+  16-PLZ: plasma_cell
+  18-PMYEL: promyelocyte
+  20-Meta: metamyelocyte
+  20-META: metamyelocyte
+  9-BASO: basophil
+  12-LYMPH-reaktiv: lymphocyte_reactive
+  08-LYMPH-neo: lymphocyte_neoplastic
+  04-LGL: lymphocyte_large_granular
+  Eosinophil: eosinophil
+  Lymphocyte: lymphocyte_mature
+  Lymphocyte-1: lymphocyte_mature
+  Monocyte: monocyte
+  Neutrophil: neutrophil
+  Basophil: basophil
+  basophile: basophil
+  eosinophile: eosinophil
+  ABE: eosinophil_abnormal
+  BLA: blast
+  FGC: fagott_cell
+  HAC: hairy_cell
+  LYI: lymphocyte_immature
+  PEB: proeryhtroblast
+  PLM: plasma_cell
+start_from_dinobloom: false
+classes_to_int:
+  basophil: 0
+  eosinophil_abnormal: 1
+  erythroblast: 2
+  fagott_cell: 3
+  hairy_cell: 4
+  lymphoblast: 5
+  lymphocyte_immature: 6
+  lymphocyte_large_granular: 7
+  lymphocyte_neoplastic: 8
+  lymphocyte_reactive: 9
+  lymphocyte_typical: 10
+  metamyelocyte: 11
+  monoblas: 12
+  monocyte: 13
+  myeloblast: 14
+  myelocyte: 15
+  neutrophil_band: 16
+  neutrophil_segmented: 17
+  plasma_cell: 18
+  proeryhtroblast: 19
+  promyelocyte: 20
+  promyelocyte_bilobed: 21
+  blast: 22
+  eosinophil: 23
+  lymphocyte_atypical: 24
+  lymphocyte_mature: 25
+  neutrophil: 26
+  platelet: 27
+  smudge_cell: 28
+'True': null

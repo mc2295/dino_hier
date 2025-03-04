@@ -15,4 +15,5 @@ source $HOME/.bashrc
 conda activate dinobloom2cond #dinobloom2cond #dinobloom
 export PATH=$CONDA_PREFIX/bin:$PATH
 #export CUDA_LAUNCH_BLOCKING=1
-torchrun --nproc_per_node=1 dinov2_hier/train/train.py --no-resume --config-file "dinov2/configs/train/custom.yaml" --output_dir "models/dino_hier" --alpha 0.5 --version 1 --hier True
+export MASTER_PORT=29600 
+torchrun --nproc_per_node=1 dinov2_hier/train/train.py --no-resume --config-file "dinov2_hier/configs/train/custom.yaml" --output_dir "models/dino_hier" --alpha 0.5 --version 1 --hier True
