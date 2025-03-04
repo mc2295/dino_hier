@@ -247,7 +247,7 @@ def do_train(cfg, model, resume=False):
     dataset_sup = make_dataset(
         dataset_str=cfg.train.dataset_path_sup,
         transform=data_transform_sup,
-        target_transform=lambda x: torch.tensor(cfg.classes_to_int[cfg.label_dict[x]]) if x in cfg.label_dict.keys() else torch.tensor(unlab_label),
+        target_transform=lambda x: torch.tensor(cfg.classes_to_int[cfg.label_dict[x]]) if x in cfg.label_dict.keys() else torch.tensor(-1),
         #target_transform=lambda x: torch.tensor(cfg.classes_to_int[cfg.label_dict[x]]) if x in cfg.label_dict.keys() else torch.tensor(unlab_label),
 
     )
