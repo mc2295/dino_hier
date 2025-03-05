@@ -20,7 +20,8 @@ Design of the hierarchy. Classes are split by lineages first, and by maturity se
 ### Hierarchical Cross-Entropy:
 
 Hierarchical Cross-Entropy is implemented according to the [HXE package](https://github.com/fiveai/making-better-mistakes/blob/master/README.md).
----
+
+
 ## Installation
 ```bash
 git clone https://github.com/mc2295/dino_hier.git
