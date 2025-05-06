@@ -167,7 +167,7 @@ label_dict:
   #NGS: 9 dupl # (Segmented neutrophils)
   # NIF (Not identifiable)
   # OTH (Other cells)
-  PEB: proeryhtroblast # (Proerythoblasts)
+  PEB: proerythroblast # (Proerythoblasts)
   PLM: plasma_cell # (Plasma cells)
   #PMO: 10 # dupl (Promyelocytes)
 
@@ -194,7 +194,7 @@ classes_to_int: #sorted(leaves_nodes) + sorted(internal_nodes)
  neutrophil_band: 16
  neutrophil_segmented: 17
  plasma_cell: 18
- proeryhtroblast: 19
+ proerythroblast: 19
  promyelocyte: 20
  promyelocyte_bilobed: 21
  blast: 22

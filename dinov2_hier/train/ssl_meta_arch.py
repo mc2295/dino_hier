@@ -27,7 +27,7 @@ except ImportError:
 
 
 logger = logging.getLogger("dinov2")
-
+print('ssl meta arch orig')
 class MLP(nn.Module):
     """
     (from pytorch metric learning package)

@@ -101,7 +101,7 @@ def load_hierarchy(version = 1):
         A nltk tree whose labels corresponds to wordnet wnids.
     """
     if version == 1:
-        hierarchy = Tree("blrootast", [
+        hierarchy = Tree("root", [
             Tree("lymphopoiesis.", [
                 Tree("immature", ["lymphocyte_immature", "lymphoblast"]),
                 Tree("lymphocyte_mature", [
@@ -110,7 +110,7 @@ def load_hierarchy(version = 1):
                 ])
             ]),
             Tree("erythropoiesis", [
-                Tree("immature", ['proeryhtroblast', "erythroblast"]), 
+                Tree("immature", ['proerythroblast', "erythroblast"]), 
             ]),
             Tree("monopoiesis", [
                 Tree("immature", ["monoblast"]),
@@ -207,7 +207,7 @@ def load_hierarchy(version = 1):
             Tree("erythropoiesis", [
                 Tree('normal', [
                     Tree("immature", [
-                        "proeryhtroblast",
+                        "proerythroblast",
                         "erythroblast"
                     ]),
                 ]),

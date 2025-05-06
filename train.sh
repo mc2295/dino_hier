@@ -10,6 +10,7 @@
 
 
 
+
 # Environment setup
 source $HOME/.bashrc
 conda activate dinobloom2cond #dinobloom2cond #dinobloom
