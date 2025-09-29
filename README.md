@@ -11,6 +11,12 @@ Datasets and training setting are the same as [DinoBloom](https://github.com/mar
 Design of the hierarchy. Classes are split by lineages first, and by maturity second. WBC labels available in the datasets are underlined.
 ![image1](https://github.com/user-attachments/assets/3c6ec692-73fa-4eb7-b95d-bc0e93c9e16e)
 
+## Modified Loss function
+
+Hierarchical cross entropy loss function is modified from its original version as to include non-leaf nodes in the possibly ground-truth classes.
+
+
+![image](https://github.com/user-attachments/assets/bdc84e44-f805-47b9-98d9-8f2fb2aab717)
 
 ### Key Features:
 - **Supervised Head Addition**: A classification head is integrated into **DINOv2**.
