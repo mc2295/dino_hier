@@ -52,6 +52,7 @@ See [contributing](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUCT.md
 │      └── loaders.py         # Make supervised and unsupervised dataloaders
 │   └── loss/
 │      └── hierarchical_ce.py   # Contains the tree structure and the hierarchical cross entropy
+│      └── hierarchical_supcon.py   # Contains the hierarchical supcon loss
 │
 │   └── eval/
 │      └── eval.py   # Extract features and compute KNN and LogReg classification scores
@@ -73,7 +74,9 @@ sbatch train.sh
 ```
 The user can adjust the following hyperparameters:
 
-- **`hier`**: `True` or `False` Parameter to choose between flat (CE) or hierarchical supervision (HXE).
+
+- **`supcon`**: `True` or `False`. Parameter to decide whether we use supcon loss (supcon hiersupcon) or not (CE, HierCE).
+- **`hier`**: `True` or `False` Parameter to choose between flat loss or hierarchical supervision.
 - **`version`**: (1, 2, 3) Determines which hierarchy to implement (`H1`, `H2`, `H3`).
 - **`alpha`**: Sets up the alpha hyperparameter to weight edges in the hierarchical tree.
 

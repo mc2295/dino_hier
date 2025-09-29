@@ -68,6 +68,11 @@ For python-based LazyConfig, use "path.key=value".
         help="Whether to use hierarchical cross-entropy (default: False)."
     )
     parser.add_argument(
+        "--supcon",
+        action="store_true",  
+        help="Whether to use hierarchical cross-entropy (default: False)."
+    )
+    parser.add_argument(
         "--version",
         default=1,
         type=int,
@@ -374,6 +379,8 @@ def main(args):
     cfg = setup(args)
     cfg.version = args.version
     cfg.hier = args.hier
+    cfg.supcon = args.supcon
+
     cfg.alpha = args.alpha
 
     model = SSLMetaArch(cfg).to(torch.device("cuda"))

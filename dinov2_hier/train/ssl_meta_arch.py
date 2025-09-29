@@ -10,7 +10,7 @@ import torch
 from torch import nn
 import os
 
-from dinov2_hier.loss import DINOLoss, iBOTPatchLoss, KoLeoLoss, HierarchicalCrossEntropyLoss, get_weighting, load_hierarchy
+from dinov2_hier.loss import DINOLoss, iBOTPatchLoss, KoLeoLoss, HierarchicalCrossEntropyLoss, get_weighting, load_hierarchy, HMLC, get_label
 from pytorch_metric_learning import losses
 from dinov2_hier.models import build_model_from_cfg
 from dinov2_hier.layers import DINOHead
@@ -212,14 +212,21 @@ class SSLMetaArch(nn.Module):
             student_model_dict["supervised_head"] =supervised_head()
             if self.cfg.hier:
                 hierarchy = load_hierarchy(version= self.cfg.version) #load the tree
-                classes = sorted(self.cfg.classes_to_int.keys()) #load all possible classes for cells
-                leaves_nodes = [i for i in classes if i in hierarchy.leaves()]
-                intern_nodes = [i for i in classes if i not in hierarchy.leaves()]
-                alpha = self.cfg.alpha # it controls the difference between low level and high levels in the hierarchy
-                weights = get_weighting(hierarchy, "exponential", value= alpha) #weight each edge of the hierarchy
-                self.supervised_losses = HierarchicalCrossEntropyLoss(hierarchy, leaves_nodes, intern_nodes, weights).cuda()
+                if self.cfg.supcon:
+                    self.label_nodes = {self.cfg.classes_to_int[get_label(hierarchy[p])]: [j for j in p] + [-1] * (4 - len(p)) for p in hierarchy.treepositions() if get_label(hierarchy[p]) in self.cfg.classes_to_int}
+                    self.supervised_losses = HMLC()                    
+                else:
+                    classes = sorted(self.cfg.classes_to_int.keys()) #load all possible classes for cells
+                    leaves_nodes = [i for i in classes if i in hierarchy.leaves()]
+                    intern_nodes = [i for i in classes if i not in hierarchy.leaves()]
+                    alpha = self.cfg.alpha # it controls the difference between low level and high levels in the hierarchy
+                    weights = get_weighting(hierarchy, "exponential", value= alpha) #weight each edge of the hierarchy
+                    self.supervised_losses = HierarchicalCrossEntropyLoss(hierarchy, leaves_nodes, intern_nodes, weights).cuda()
             else:
-                self.supervised_losses = nn.CrossEntropyLoss(ignore_index=-1)
+                if self.cfg.supcon: 
+                    self.supervised_losses = losses.SupConLoss()   
+                else:    
+                    self.supervised_losses = nn.CrossEntropyLoss(ignore_index=-1)
             self.supervised_loss_weight = cfg.supervised.loss_weight
    
         self.need_to_synchronize_fsdp_streams = True
@@ -266,6 +273,7 @@ class SSLMetaArch(nn.Module):
 
     def get_supervised_loss(self, images_sup):
         
+        
         image_sup, labels = images_sup["collated_global_crops"], images_sup["labels"]
         image_sup, labels = image_sup.to('cuda'), labels.to('cuda')
         student_global_backbone_output_dict_sup = self.student.backbone(
@@ -273,14 +281,29 @@ class SSLMetaArch(nn.Module):
         )
         student_global_cls_tokens_sup = student_global_backbone_output_dict_sup["x_norm_clstoken"]
         #student_global_cls_tokens_sup = student_global_backbone_output_dict_sup
-        cls_output = self.student.module.supervised_head(student_global_cls_tokens_sup) if hasattr(self.student, 'module') else self.student.supervised_head(student_global_cls_tokens_sup)
         mask = labels != -1
         masked_labels = labels[mask]
+        if self.cfg.supcon:
+            if self.cfg.hier:
+                masked_labels = torch.stack([torch.Tensor(self.label_nodes[int(i)]) for i in masked_labels.cpu().detach().numpy()]).to('cuda')
+            cls_output = student_global_cls_tokens_sup
+        else:
+            cls_output = self.student.module.supervised_head(student_global_cls_tokens_sup) if hasattr(self.student, 'module') else self.student.supervised_head(student_global_cls_tokens_sup)
+
         cls_output = cls_output[mask]       
 
         supervised_loss = self.supervised_loss_weight * self.supervised_losses(cls_output, masked_labels)
         loss_value = supervised_loss/2
-        loss_name = 'HierCrossEntropy' if self.cfg.hier else 'CrossEntropy' 
+        if self.cfg.hier:
+            if self.cfg.supcon:
+                loss_name = 'HierSupCon'
+            else:
+                loss_name = 'HierCrossEntropy'
+        else:
+            if self.cfg.supcon:
+                loss_name = 'SupCon'
+            else: 
+                loss_name = 'CrossEntropy'
 
         del cls_output
         del student_global_cls_tokens_sup
