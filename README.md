@@ -2,6 +2,7 @@
 
 ## Overview
 This repository extends the [DINOv2](https://github.com/facebookresearch/dinov2) foundation model by adding **supervised learning** through a classification head. We introduce **hierarchical cross-entropy (HXE)** to align predictions with biologically meaningful hierarchical structures, improving model interpretability and performance, particularly for rare classes.
+This repository builds upon [DinoBloom](https://github.com/marrlab/DinoBloom) repository, introducing a hierarchical feature to improve organization and functionality.
 
 ## Datasets and Models
 Datasets and training setting are the same as [DinoBloom](https://github.com/marrlab/DinoBloom) study. We start from DinoBloom-L pretrained model.
